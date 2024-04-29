@@ -667,7 +667,7 @@ public class Peer implements Node {
                         } catch (Exception e) {
                             System.out.println("Failed to exit overlay: " + e.getMessage());
                         }
-                        break;
+                        break; 
                     case "my-info":
                         System.out.println("My Peer ID: " + node.peerID);
                         System.out.println("My IP Address: " + node.getIpAddress());
