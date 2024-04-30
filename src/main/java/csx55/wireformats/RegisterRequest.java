@@ -13,6 +13,7 @@ public class RegisterRequest implements Event{
     private int messageType = Protocol.REGISTER_REQUEST;
     private String ipAddress;
     private int portNumber;
+    boolean isClient = false;
     
 
     public RegisterRequest(byte[] message) throws IOException {
@@ -23,13 +24,14 @@ public class RegisterRequest implements Event{
         }
     }
     
-    public RegisterRequest( String ipAddress, int portNumber) throws IOException {
+    public RegisterRequest( String ipAddress, int portNumber, boolean isClient) throws IOException {
         this.ipAddress = ipAddress;
         this.portNumber = portNumber;
+        this.isClient = isClient;
     }
 
     public String getInfo() {
-        return "REGISTER_REQUEST\nIP address (String): " + ipAddress + "\nPort number (int): " + portNumber + "\n";
+        return "REGISTER_REQUEST\nIP address (String): " + ipAddress + "\nPort number (int): " + portNumber + "\n" + "Is client (boolean): " + isClient;
     }
 
     public String getIpAddress() {
@@ -38,6 +40,10 @@ public class RegisterRequest implements Event{
 
     public int getPortNumber() {
         return portNumber;
+    }
+
+    public boolean isClient() {
+        return isClient;
     }
 
     public int getType() {
@@ -61,6 +67,7 @@ public class RegisterRequest implements Event{
         dout.writeInt(ipAddressBytes.length);
         dout.write(ipAddressBytes);
         dout.writeInt(portNumber);
+        dout.writeBoolean(isClient);
     
 
         // this tells the output stream to flush its buffer
@@ -94,6 +101,7 @@ public class RegisterRequest implements Event{
         ipAddress = new String(ipAddressBytes);
         // read the tracker from the input stream, whatever that is
         portNumber = din.readInt();
+        isClient = din.readBoolean();
         // close the byte array input stream and the data input stream
         baInputStream.close();
         din.close(); 

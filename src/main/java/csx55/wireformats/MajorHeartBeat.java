@@ -72,63 +72,53 @@ public class MajorHeartBeat implements Event{
 
 
     public byte[] getBytes() throws IOException {
-        // creating a byte array to store the marshalled bytes
-        byte[] marshalledBytes = null;
-        // creating a byte array output stream
-        // the buffer capacity is initially 32 bytes, though its size increases if necessary.
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        // wrapping the output stream in a data output stream in order to use the write methods to write data
-        // creates a new data output stream to write data to the specified underlying output stream. 
-        // The counter 'written' is set to zero.
         DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(byteArrayOutputStream));
-
-        // Writing to the output stream using the write methods
+    
         dout.writeInt(messageType);
         byte[] chunkIDBytes = chunkID.getBytes();
         dout.writeInt(chunkIDBytes.length);
         dout.write(chunkIDBytes);
         dout.writeBoolean(corruptFileFound);
-        dout.writeInt(corruptedChunks.size());
-        for (String chunk : corruptedChunks) {
-            byte[] chunkBytes = chunk.getBytes();
-            dout.writeInt(chunkBytes.length);
-            dout.write(chunkBytes);
-        }
-        dout.writeFloat(availableSpace);
-        dout.writeInt(fileMap.size());
-        for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
-            byte[] fileNameBytes = entry.getKey().getBytes();
-            dout.writeInt(fileNameBytes.length);
-            dout.write(fileNameBytes);
-            List<Path> chunkIDs = entry.getValue();
-            dout.writeInt(chunkIDs.size());
-            for (Path chunkID : chunkIDs) {
-                byte[] chunkListIDBytes = chunkID.toString().getBytes(); // convert Path to String
-                dout.writeInt(chunkListIDBytes.length);
-                dout.write(chunkListIDBytes);
+        dout.writeInt(corruptedChunks != null ? corruptedChunks.size() : 0);
+        if (corruptedChunks != null) {
+            for (String chunk : corruptedChunks) {
+                byte[] chunkBytes = chunk.getBytes();
+                dout.writeInt(chunkBytes.length);
+                dout.write(chunkBytes);
             }
         }
-        // this tells the output stream to flush its buffer
+        dout.writeFloat(availableSpace);
+        dout.writeInt(fileMap != null ? fileMap.size() : 0);
+        if (fileMap != null) {
+            for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
+                byte[] fileNameBytes = entry.getKey().getBytes();
+                dout.writeInt(fileNameBytes.length);
+                dout.write(fileNameBytes);
+                List<Path> chunkIDs = entry.getValue();
+                dout.writeInt(chunkIDs != null ? chunkIDs.size() : 0);
+                if (chunkIDs != null) {
+                    for (Path chunkID : chunkIDs) {
+                        byte[] chunkListIDBytes = chunkID.toString().getBytes();
+                        dout.writeInt(chunkListIDBytes.length);
+                        dout.write(chunkListIDBytes);
+                    }
+                }
+            }
+        }
         dout.flush();
-        // now we grab the byte array from the output stream, convert it to a byte array, and return it
-        marshalledBytes = byteArrayOutputStream.toByteArray();
-        // closing the output stream
+        byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
         byteArrayOutputStream.close();
-        // closing the data output stream
         dout.close();
-
+    
         return marshalledBytes;
     }
-
+    
     public void setBytes(byte[] marshalledBytes) throws IOException {
-
-        // creating a byte array input stream to read the message from the byte array
         ByteArrayInputStream baInputStream = new ByteArrayInputStream(marshalledBytes);
-        // wrapping the byte array input stream in a data input stream in order to use the read methods to read data
         DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));
-        // reading the metadata from the input stream using the read methods
+    
         messageType = din.readInt();
-        // read the chunk ID
         int chunkIDLength = din.readInt();
         byte[] chunkIDBytes = new byte[chunkIDLength];
         din.readFully(chunkIDBytes);
@@ -156,13 +146,12 @@ public class MajorHeartBeat implements Event{
                 int newChunkIDLength = din.readInt();
                 byte[] newchunkIDBytes = new byte[newChunkIDLength];
                 din.readFully(newchunkIDBytes);
-                chunkIDs.add(Paths.get(new String(newchunkIDBytes))); // convert String to Path
+                chunkIDs.add(Paths.get(new String(newchunkIDBytes)));
             }
             fileMap.put(fileName, chunkIDs);
         }
-        // close the byte array input stream and the data input stream
         baInputStream.close();
-        din.close(); 
+        din.close();
     }
 
 }

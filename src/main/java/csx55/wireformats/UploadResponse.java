@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
-
+import java.util.ArrayList;
 import java.util.List;
 
 public class UploadResponse implements Event{
@@ -17,6 +17,7 @@ public class UploadResponse implements Event{
     
 
     public UploadResponse(byte[] message) throws IOException {
+        this.chunkServers = new ArrayList<>(); // Initialize chunkServers
         try {
             setBytes(message);
         } catch (IOException e) {
@@ -26,7 +27,7 @@ public class UploadResponse implements Event{
     
     public UploadResponse(byte success, List<String> chunkServers) throws IOException {
         this.successStatus = success;
-        this.chunkServers = chunkServers;
+        this.chunkServers = chunkServers != null ? new ArrayList<>(chunkServers) : new ArrayList<>();
     }
 
     public String getInfo() {

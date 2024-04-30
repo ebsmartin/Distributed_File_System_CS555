@@ -3,6 +3,7 @@ package csx55.wireformats;
 import java.io.*;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Upload implements Event{
@@ -77,7 +78,7 @@ public class Upload implements Event{
     }
 
     public String getInfo() {
-        return "Migrating chunk: " + chunkFileName + " out of " + totalChunksBeingSent + " of file: " + fileName;
+        return "Incoming chunk: " + chunkFileName + " out of " + totalChunksBeingSent + " of file: " + fileName;
     }
     
     public byte[] getBytes() throws IOException {
@@ -92,14 +93,18 @@ public class Upload implements Event{
         dout.writeInt(chunkFileNameBytes.length);
         dout.write(chunkFileNameBytes);
         dout.writeInt(totalChunksBeingSent);
-        dout.writeInt(forwardToTheseChunks.size());
-        for (String chunk : forwardToTheseChunks) {
-            byte[] chunkBytes = chunk.getBytes();
-            dout.writeInt(chunkBytes.length);
-            dout.write(chunkBytes);
+        dout.writeInt(forwardToTheseChunks != null ? forwardToTheseChunks.size() : 0);
+        if (forwardToTheseChunks != null) {
+            for (String chunk : forwardToTheseChunks) {
+                byte[] chunkBytes = chunk.getBytes();
+                dout.writeInt(chunkBytes.length);
+                dout.write(chunkBytes);
+            }
         }
-        dout.writeInt(fileContents.length);
-        dout.write(fileContents);
+        dout.writeInt(fileContents != null ? fileContents.length : 0);
+        if (fileContents != null) {
+            dout.write(fileContents);
+        }
 
         dout.flush();
         byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
@@ -124,7 +129,11 @@ public class Upload implements Event{
         chunkFileName = new String(chunkFileNameBytes);
         totalChunksBeingSent = din.readInt();
         int numChunks = din.readInt();
-        forwardToTheseChunks.clear();
+        if (forwardToTheseChunks != null) {
+            forwardToTheseChunks.clear();
+        } else {
+            forwardToTheseChunks = new ArrayList<>();
+        }
         for (int i = 0; i < numChunks; i++) {
             int chunkLength = din.readInt();
             byte[] chunkBytes = new byte[chunkLength];
@@ -132,8 +141,15 @@ public class Upload implements Event{
             forwardToTheseChunks.add(new String(chunkBytes));
         }
         int fileContentsLength = din.readInt();
-        fileContents = new byte[fileContentsLength];
-        din.readFully(fileContents);
+        if (fileContentsLength > 0) {
+            fileContents = new byte[fileContentsLength];
+            din.readFully(fileContents);
+        } else {
+            fileContents = new byte[0];
+        }
+    
+        // Initialize chunkFile based on fileName and chunkFileName
+        chunkFile = new File(fileName + "_" + chunkFileName);
     
         baInputStream.close();
         din.close();

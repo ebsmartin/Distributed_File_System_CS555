@@ -97,7 +97,7 @@ public class Client implements Node {
             TCPRecieverThread reciever = new TCPRecieverThread(this.controllerSocket, this);
             new Thread(reciever).start();  // start the reciever thread
             // create the register request
-            RegisterRequest registerRequest = new RegisterRequest(IpAddress, portNumber);
+            RegisterRequest registerRequest = new RegisterRequest(IpAddress, portNumber, true);
             System.out.println("Printing Register Request Info: \n" + registerRequest.getInfo());
             // send the register request
             controllerSenderSocket.sendData(registerRequest.getBytes());
@@ -199,9 +199,11 @@ public class Client implements Node {
 
                 Socket socket = new Socket(chunkServers.get(0).split(":")[0], Integer.parseInt(chunkServers.get(0).split(":")[1]));
                 TCPSender sender = new TCPSender(socket);
+                int chunkNumber = 1;
                 for (byte[] chunk : chunks) {
+                    System.out.println("Sending chunk " + chunkNumber + " to server: " + chunkServers.get(0));
                     // create a file path for the chunk with _chunk<number> appended to the file name
-                    String chunkFilePath = filePath + "_chunk" + (chunks.length + 1);
+                    String chunkFilePath = filePath + "_chunk" + (chunkNumber++);
                     File chunkFile = new File(chunkFilePath);
                     Upload upload = new Upload(chunkFile, chunk, chunks.length, chunkServers);
                     sender.sendData(upload.getBytes());
@@ -261,7 +263,7 @@ public class Client implements Node {
     
     // Main method to run the peerNode
     // gradle build neighbors
-    // ~/CS555/hw3/build/classes/java/main$ java csx55.chord.Peer 129.82.44.146 45559
+    // ~/CS555/hw3/build/classes/java/main$ java csx55.dfs.Client 129.82.44.143 45559
     // -------------------------------------------------- Main Method --------------------------------------------------
     public static void main(String[] args) {
         if (args.length != 2) {

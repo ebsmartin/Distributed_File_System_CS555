@@ -93,12 +93,7 @@ public class FileHandler {
             System.out.println("File path is null.");
             return;
         }
-
-        if (!chunkFile.exists()) {
-            System.out.println("File does not exist: " + filePath);
-            return;
-        }
-
+        
         if (chunkServer == null) {
             System.out.println("ChunkServer node is null.");
             return;
@@ -253,8 +248,13 @@ public class FileHandler {
     public void printFileList() {
         // Return a list of files stored locally
         System.out.println("Files stored locally:");
-        for (String fileName : fileMap.keySet()) {
-            System.out.println(fileName);
+        for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
+            String fileName = entry.getKey();
+            List<Path> chunks = entry.getValue();
+            System.out.println("File: " + fileName);
+            for (Path chunk : chunks) {
+                System.out.println("\tChunk: " + chunk.getFileName().toString());
+            }
         }
     }
 }

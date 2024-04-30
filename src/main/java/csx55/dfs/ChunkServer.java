@@ -94,7 +94,7 @@ public class ChunkServer implements Node {
             TCPRecieverThread reciever = new TCPRecieverThread(this.controllerSocket, this);
             new Thread(reciever).start();  // start the reciever thread
             // create the register request
-            RegisterRequest registerRequest = new RegisterRequest(IpAddress, portNumber);
+            RegisterRequest registerRequest = new RegisterRequest(IpAddress, portNumber, false);
             System.out.println("Printing Register Request Info: \n" + registerRequest.getInfo());
             // send the register request
             controllerSenderSocket.sendData(registerRequest.getBytes());
@@ -276,6 +276,7 @@ public class ChunkServer implements Node {
                 // check if this node is in the list of nodes to forward to
                 if (forwardToTheseChunks.contains(this.node)) {
                     // remove this node from the list
+                    System.out.println("Removing this node from the list of nodes to forward to.");
                     forwardToTheseChunks.remove(this.node);
                 }
                     // store the file locally
@@ -316,7 +317,7 @@ public class ChunkServer implements Node {
     
     // Main method to run the peerNode
     // gradle build neighbors
-    // ~/CS555/hw3/build/classes/java/main$ java csx55.chord.Peer 129.82.44.146 45559
+    // ~/CS555/hw3/build/classes/java/main$ java csx55.dfs.ChunkServer 129.82.44.146 45559
     // -------------------------------------------------- Main Method --------------------------------------------------
     public static void main(String[] args) {
         if (args.length != 2) {

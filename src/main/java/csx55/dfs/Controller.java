@@ -26,6 +26,8 @@ public class Controller implements Node{
     // maps hostname:port to a ChunkInfo object
     private Map<String, ChunkInfo> chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
     private Map<String, TCPSender> chunkServerSockets = Collections.synchronizedMap(new HashMap<String, TCPSender>());
+    private Map<String, TCPSender> clientSockets = Collections.synchronizedMap(new HashMap<String, TCPSender>());
+    
     // Singleton instance to ensure only one controllerNode is created
     private static Controller instance = null;
 
@@ -77,12 +79,12 @@ public class Controller implements Node{
         return ipAddress;
     }
 
-    public synchronized void registerNode(String hostname, int port, Socket socket) throws IOException {
+    public synchronized void registerNode(String hostname, int port, Socket socket, boolean isClient) throws IOException {
         
         String key = hostname + ":" + port;
         
         // Check if the node had previously registered
-        if (chunkServerInfo.containsKey(key)) {
+        if (chunkServerInfo.containsKey(key) || clientSockets.containsKey(key)) {
             // create a new TCPSender to send the response
             TCPSender sender = new TCPSender(socket);
             try {
@@ -94,14 +96,15 @@ public class Controller implements Node{
         }
         // Add the node to the list of peer nodes
         try {
-            chunkServerInfo.put(key, new ChunkInfo(key));
-            System.out.println("\nAdded chunkServer: " + key);
-            // create a new TCPSender to send the response
-            TCPSender sender = new TCPSender(socket);
-            chunkServerSockets.put(key, sender);
-            if (chunkServerInfo.size() == 1) {
-                sendRegisterResponse(sender, Protocol.SUCCESS, "Registration request successful. The number of chunk servers currently registered: (" + chunkServerInfo.size() + ")");
-                return;
+            if (isClient) {
+                clientSockets.put(key, new TCPSender(socket));
+                System.out.println("\nAdded client: " + key);
+            } else {
+                chunkServerInfo.put(key, new ChunkInfo(key));
+                System.out.println("\nAdded chunkServer: " + key);
+                // create a new TCPSender to send the response
+                TCPSender sender = new TCPSender(socket);
+                chunkServerSockets.put(key, sender);
             }
         } catch (IOException e) {
             System.out.println("Failed to add node to the list of chunk server nodes: " + e.getMessage());
@@ -239,8 +242,9 @@ public class Controller implements Node{
                 System.out.println("Printing Register Request Info: \n" + request.getInfo());
                 String hostname = request.getIpAddress();
                 int port = request.getPortNumber();
+                boolean isClient = request.isClient();
                 // Register the node and send a success response
-                registerNode(hostname, port, socket);
+                registerNode(hostname, port, socket, isClient);
 
                 break;
     
@@ -281,7 +285,7 @@ public class Controller implements Node{
 
     // Main method to run the controllerNode
     // gradle build
-    // ~/CS555/hw3/build/classes/java/main$ java csx55.chord.ControllerNode 45555
+    // ~/CS555/hw3/build/classes/java/main$ java csx55.dfs.Controller 45559
     public static void main(String[] args) {
 
         if (args.length != 1) {
