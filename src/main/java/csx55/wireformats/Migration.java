@@ -1,29 +1,33 @@
 package csx55.wireformats;
 
 import java.io.*;
-import java.io.File;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.util.List;
 
 public class Migration implements Event{
 
     private int messageType = Protocol.MIGRATION;
     private String fileName;
-    private File file;
-    private int fileIdentifier;
-    private String originatingPeer;
-    private Boolean force; // force migration, peer is leaving
+    private File chunkFile;
+    private String chunkFileName;
+    private int totalChunksBeingSent;
+    private List<String> forwardToTheseChunks;
 
     public Migration(byte[] message) throws IOException {
         setBytes(message);
     }
 
-    public Migration(File file, int fileIdentifier, String originatingPeer, Boolean force) {
-        this.file = file;
-        this.fileName = file.getName();
-        this.fileIdentifier = fileIdentifier;
-        this.originatingPeer = originatingPeer;
-        this.force = force;
+    public Migration(File chunkFile, int totalChunksBeingSent, List<String> forwardToTheseChunks) {
+        this.chunkFile = chunkFile;
+        String[] parts = chunkFile.getName().split("_");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid file name format");
+        }
+        this.fileName = parts[0];
+        this.chunkFileName = parts[1];
+        this.totalChunksBeingSent = totalChunksBeingSent;
+        this.forwardToTheseChunks = forwardToTheseChunks;
     }
 
     public int getType() {
@@ -35,26 +39,31 @@ public class Migration implements Event{
     }
 
     public File getFile() {
-        return file;
+        return chunkFile;
     }
 
-    public int getFileIdentifier() {
-        return fileIdentifier;
+    public String getChunkFileName() {
+        return chunkFileName;
     }
 
-    public String getOriginatingPeer() {
-        return originatingPeer;
+    public int getTotalChunksBeingSent() {
+        return totalChunksBeingSent;
     }
 
-    public Boolean getForce() {
-        return force;
+    public List<String> getForwardToTheseChunks() {
+        return forwardToTheseChunks;
+    }
+
+    public void setForwardToTheseChunks(List<String> forwardToTheseChunks) {
+        this.forwardToTheseChunks = forwardToTheseChunks;
+    }
+
+    public void removeChunkFromForwardList(String chunkID) {
+        forwardToTheseChunks.remove(chunkID);
     }
 
     public String getInfo() {
-        if (force) {
-            return "Forcefully Migrating file: " + fileName + " from " + originatingPeer + "\n";
-        }
-        return "Migrating file: " + fileName + " from " + originatingPeer + "\n";
+        return "Migrating chunk: " + chunkFileName + " out of " + totalChunksBeingSent + " of file: " + fileName;
     }
     
     public byte[] getBytes() throws IOException {
@@ -65,15 +74,16 @@ public class Migration implements Event{
         byte[] fileNameBytes = fileName.getBytes();
         dout.writeInt(fileNameBytes.length);
         dout.write(fileNameBytes);
-        byte[] fileContent = Files.readAllBytes(file.toPath());
-        dout.writeInt(fileContent.length);
-        dout.write(fileContent);
-        dout.writeInt(fileIdentifier);
-        byte[] originatingPeerBytes = originatingPeer.getBytes();
-        dout.writeInt(originatingPeerBytes.length);
-        dout.write(originatingPeerBytes);
-        dout.writeBoolean(force);
-        
+        byte[] chunkFileNameBytes = chunkFileName.getBytes();
+        dout.writeInt(chunkFileNameBytes.length);
+        dout.write(chunkFileNameBytes);
+        dout.writeInt(totalChunksBeingSent);
+        dout.writeInt(forwardToTheseChunks.size());
+        for (String chunk : forwardToTheseChunks) {
+            byte[] chunkBytes = chunk.getBytes();
+            dout.writeInt(chunkBytes.length);
+            dout.write(chunkBytes);
+        }        
         dout.flush();
         byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
         byteArrayOutputStream.close();
@@ -91,17 +101,19 @@ public class Migration implements Event{
         byte[] fileNameBytes = new byte[fileNameLength];
         din.readFully(fileNameBytes);
         fileName = new String(fileNameBytes);
-        int fileContentLength = din.readInt();
-        byte[] fileContent = new byte[fileContentLength];
-        din.readFully(fileContent);
-        Files.write(Paths.get(fileName), fileContent);
-        file = new File(fileName); 
-        fileIdentifier = din.readInt();
-        int originatingPeerLength = din.readInt();
-        byte[] originatingPeerBytes = new byte[originatingPeerLength];
-        din.readFully(originatingPeerBytes);
-        originatingPeer = new String(originatingPeerBytes);
-        force = din.readBoolean();
+        int chunkFileNameLength = din.readInt();
+        byte[] chunkFileNameBytes = new byte[chunkFileNameLength];
+        din.readFully(chunkFileNameBytes);
+        chunkFileName = new String(chunkFileNameBytes);
+        totalChunksBeingSent = din.readInt();
+        int numChunks = din.readInt();
+        forwardToTheseChunks.clear();
+        for (int i = 0; i < numChunks; i++) {
+            int chunkLength = din.readInt();
+            byte[] chunkBytes = new byte[chunkLength];
+            din.readFully(chunkBytes);
+            forwardToTheseChunks.add(new String(chunkBytes));
+        }
     
         baInputStream.close();
         din.close();

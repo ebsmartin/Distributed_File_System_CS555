@@ -1,24 +1,19 @@
 package csx55.wireformats;
 
 import java.io.*;
-import java.util.ArrayList;
 
 public class DownloadRequest implements Event{
 
     private int messageType = Protocol.DOWNLOAD_REQUEST;
     private String fileName;
-    private int fileIdentifier;
-    // list of hops taken to find the file
-    ArrayList<String> hops = new ArrayList<String>();
+    private String client;
 
     public DownloadRequest(byte[] message) throws IOException {
         setBytes(message);
     }
 
-    public DownloadRequest(String fileName, int fileIdentifier, String hop) {
+    public DownloadRequest(String fileName, String client) {
         this.fileName = fileName;
-        this.fileIdentifier = fileIdentifier;
-        hops.add(hop); // peer that sent the request
     }
 
     public int getType() {
@@ -29,17 +24,13 @@ public class DownloadRequest implements Event{
         return fileName;
     }
 
-    public int getFileIdentifier() {
-        return fileIdentifier;
+    public String getClient() {
+        return client;
     }
 
-    public ArrayList<String> getHops() {
-        return hops;
-    }
 
     public String getInfo() {
-        return "Download Request for file: " + fileName + "\nFile Identifier: " + fileIdentifier + "\n"
-                + "Hops taken during search so far: " + hops.toString();
+        return "Download Request for file: " + fileName + " from client: " + client;
     }
     
     public byte[] getBytes() throws IOException {
@@ -50,14 +41,10 @@ public class DownloadRequest implements Event{
         byte[] fileNameBytes = fileName.getBytes();
         dout.writeInt(fileNameBytes.length);
         dout.write(fileNameBytes);
-        dout.writeInt(fileIdentifier);
-        dout.writeInt(hops.size());
-        for (String hop : hops) {
-            byte[] hopBytes = hop.getBytes();
-            dout.writeInt(hopBytes.length);
-            dout.write(hopBytes);
-        }
-
+        byte[] clientBytes = client.getBytes();
+        dout.writeInt(clientBytes.length);
+        dout.write(clientBytes);
+        
         dout.flush();
         byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
         byteArrayOutputStream.close();
@@ -75,15 +62,10 @@ public class DownloadRequest implements Event{
         byte[] fileNameBytes = new byte[fileNameLength];
         din.readFully(fileNameBytes);
         fileName = new String(fileNameBytes);
-        fileIdentifier = din.readInt();
-        int hopsSize = din.readInt();
-        for (int i = 0; i < hopsSize; i++) {
-            int hopLength = din.readInt();
-            byte[] hopBytes = new byte[hopLength];
-            din.readFully(hopBytes);
-            hops.add(new String(hopBytes));
-        }
-
+        int clientLength = din.readInt();
+        byte[] clientBytes = new byte[clientLength];
+        din.readFully(clientBytes);
+        
         baInputStream.close();
         din.close();
     }
