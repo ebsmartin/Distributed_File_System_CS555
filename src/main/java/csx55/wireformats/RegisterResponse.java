@@ -12,7 +12,6 @@ public class RegisterResponse implements Event {
 
     private int messageType = Protocol.REGISTER_RESPONSE;
     private byte successStatus;
-    private String randPeer;
     private String additionalInfo;
     private String successStatusString;
 
@@ -24,20 +23,19 @@ public class RegisterResponse implements Event {
         }
     }
 
-    public RegisterResponse(byte successStatus, String randPeer, String additionalInfo) {
+    public RegisterResponse(byte successStatus, String additionalInfo) {
         this.successStatus = successStatus;
         if (successStatus == Protocol.SUCCESS) {
             this.successStatusString = "SUCCESS";
         } else {
             this.successStatusString = "FAILURE";
         }
-        this.randPeer = randPeer;
         this.additionalInfo = additionalInfo;
     }
 
     public String getInfo() {
         return "REGISTER_RESPONSE\nStatus Code (byte): " 
-                + successStatusString + "\nRandom Peer: " + randPeer + "\nAdditional Info (String): " + additionalInfo + "\n";
+                + successStatusString + "\nAdditional Info (String): " + additionalInfo + "\n";
     }
 
     public int getType() {
@@ -46,10 +44,6 @@ public class RegisterResponse implements Event {
 
     public byte getSuccessStatus() {
         return successStatus;
-    }
-
-    public String getPeer() {
-        return randPeer;
     }
 
     public byte[] getBytes() throws IOException {
@@ -66,9 +60,6 @@ public class RegisterResponse implements Event {
         // Writing to the output stream using the write methods
         dout.writeInt(messageType);
         dout.writeByte(successStatus);
-        byte[] randPeerBytes = randPeer.getBytes();
-        dout.writeInt(randPeerBytes.length);
-        dout.writeBytes(randPeer);
         byte[] additionalInfoBytes = additionalInfo.getBytes();
         dout.writeInt(additionalInfoBytes.length);
         dout.writeBytes(additionalInfo);
@@ -99,11 +90,6 @@ public class RegisterResponse implements Event {
         } else {
             successStatusString = "FAILURE";
         }
-        // reads the peerID from the input stream
-        int randPeerBytesLength = din.readInt();
-        byte[] randPeerBytes = new byte[randPeerBytesLength];
-        din.readFully(randPeerBytes);
-        randPeer = new String(randPeerBytes);
 
         // reads the length of the identifier from the input stream in order to know how many bytes to read
         int additionalInfoBytesLength = din.readInt();

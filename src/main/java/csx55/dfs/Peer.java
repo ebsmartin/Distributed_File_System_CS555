@@ -216,7 +216,7 @@ public class Peer implements Node {
 
     public void exitChord() {
         // send a message to the successor to update its predecessor
-        PeerExit peerExit = new PeerExit(this.predecessor);
+        ChunkExit peerExit = new ChunkExit(this.predecessor);
         sendToNode(this.successor.split(" ")[1], peerExit);
         sleep(1000);
         // Migrate the data 
@@ -317,18 +317,6 @@ public class Peer implements Node {
                 // casting the event to a RegisterResponse
                 RegisterResponse registerResponse = (RegisterResponse) event;
                 handleRegistrationResponse(registerResponse);
-                break;
-
-            case Protocol.PEER_EXIT:
-                
-                // casting the event to a PeerExit
-                PeerExit peerExit = (PeerExit) event;
-                System.out.println("Printing Peer Exit Info: \n" + peerExit.getInfo());
-                // set my predecessor to the peerExit nodes predecessor
-                this.predecessor = peerExit.getPredecessor();
-                // notify predecessor to update its successor
-                NotifyPredecessor exitNotifyMessage = new NotifyPredecessor(this.peerID, this.node);
-                sendToNode(this.predecessor.split(" ")[1], exitNotifyMessage);
                 break;
             
             case Protocol.DEREGISTER_RESPONSE:

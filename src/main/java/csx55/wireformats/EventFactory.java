@@ -37,22 +37,6 @@ public class EventFactory {
                     return new DeregisterRequest(message);
                 case Protocol.DEREGISTER_RESPONSE:
                     return new DeregisterResponse(message);
-                case Protocol.FIND_SUCCESSOR_REQUEST:
-                    return new FindSuccessorRequest(message);
-                case Protocol.FIND_SUCCESSOR_RESPONSE:
-                    return new FindSuccessorResponse(message);
-                case Protocol.JOIN_REQUEST:
-                    return new JoinRequest(message);
-                case Protocol.JOIN_RESPONSE:
-                    return new JoinResponse(message);
-                case Protocol.NOTIFY_PREDECESSOR:
-                    return new NotifyPredecessor(message);
-                case Protocol.STABILIZE:
-                    return new Stabilize(message);
-                case Protocol.STABILIZE_RESPONSE:
-                    return new StabilizeResponse(message);
-                case Protocol.PEER_EXIT:
-                    return new PeerExit(message);
                 case Protocol.DOWNLOAD_REQUEST:
                     return new DownloadRequest(message);
                 case Protocol.DOWNLOAD_RESPONSE:
@@ -61,6 +45,10 @@ public class EventFactory {
                     return new Migration(message);
                 case Protocol.MIGRATION_RESPONSE:
                     return new MigrationResponse(message);
+                case Protocol.MINOR_HEARTBEAT:
+                    return new MinorHeartBeat(message);
+                case Protocol.MAJOR_HEARTBEAT:
+                    return new MajorHeartBeat(message);
                 default:
                     throw new IllegalArgumentException("Invalid event type: " + eventType);
             }
@@ -69,34 +57,5 @@ public class EventFactory {
             System.err.println("Error creating event: " + e);
             return null;
         }
-    }
-
-    public static void main(String[] args) {
-        EventFactory factory = EventFactory.getInstance();
-        try {
-            // Create a RegisterRequest
-            RegisterRequest originalRequest = new RegisterRequest(12345, "129.82.44.246", 49355);
-            System.out.println("Original request type: " + originalRequest.getType());
-    
-            // Get the bytes of the original request
-            byte[] bytes = originalRequest.getBytes();
-    
-            // Create a new RegisterRequest and set its bytes to the bytes of the original request
-            RegisterRequest newRequest = new RegisterRequest(bytes);
-            System.out.println("New request type: " + newRequest.getType());
-    
-            // The new request type should now be equal to the original request type
-            if (originalRequest.getType() == newRequest.getType()) {
-                System.out.println("Test passed: The types are equal.");
-            } else {
-                System.out.println("Test failed: The types are not equal.");
-            }
-        
-            factory.createEvent(bytes);
-
-        } catch (IOException e) {
-            System.out.println("Exception should not be thrown: " + e.getMessage());
-        }
-    
     }
 }

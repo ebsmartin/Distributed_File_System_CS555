@@ -11,7 +11,6 @@ import java.io.IOException;
 public class RegisterRequest implements Event{
     
     private int messageType = Protocol.REGISTER_REQUEST;
-    private int peerID;
     private String ipAddress;
     private int portNumber;
     
@@ -24,18 +23,13 @@ public class RegisterRequest implements Event{
         }
     }
     
-    public RegisterRequest(int peerID, String ipAddress, int portNumber) throws IOException {
+    public RegisterRequest( String ipAddress, int portNumber) throws IOException {
         this.ipAddress = ipAddress;
         this.portNumber = portNumber;
-        this.peerID = peerID;
     }
 
     public String getInfo() {
-        return "REGISTER_REQUEST\nPeerID(int): " + peerID + "\nIP address (String): " + ipAddress + "\nPort number (int): " + portNumber + "\n";
-    }
-
-    public int getPeerID() {
-        return peerID;
+        return "REGISTER_REQUEST\nIP address (String): " + ipAddress + "\nPort number (int): " + portNumber + "\n";
     }
 
     public String getIpAddress() {
@@ -63,7 +57,6 @@ public class RegisterRequest implements Event{
 
         // Writing to the output stream using the write methods
         dout.writeInt(messageType);
-        dout.writeInt(peerID);
         byte[] ipAddressBytes = ipAddress.getBytes();
         dout.writeInt(ipAddressBytes.length);
         dout.write(ipAddressBytes);
@@ -90,8 +83,6 @@ public class RegisterRequest implements Event{
         DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));
         // reading the metadata from the input stream using the read methods
         messageType = din.readInt();
-        // read the peerID from the input stream
-        peerID = din.readInt();
         // reads the length of the identifier from the input stream in order to know how many bytes to read
         int ipAddressLength = din.readInt();
         // create a byte array to store the identifier equal to the length of the identifier

@@ -14,13 +14,15 @@ import java.net.UnknownHostException;
 
 import csx55.transport.TCPSender;
 import csx55.transport.TCPServerThread;
+import csx55.helper.ChunkInfo;
 import csx55.wireformats.*;
 
 public class Controller implements Node{
     
     // Hash table to store the <peerID, hostname:portnum> of the peer nodes
     // using the wrapper class Collections to synchronize the map to prevent concurrent modification
-    private Map<Integer, String> chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
+    // maps hostname:port to a ChunkInfo object
+    private Map<String, ChunkInfo> chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
 
     // Singleton instance to ensure only one controllerNode is created
     private static Controller instance = null;
@@ -35,7 +37,7 @@ public class Controller implements Node{
     // Constructor is private so that only one controllerNode can be created
     private Controller(int portNumber) {
         this.portNumber = portNumber;
-        this.chunkServers = Collections.synchronizedMap(new HashMap<Integer, String>());
+        this.chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
 
         // get the local ip Address
         try {
@@ -73,75 +75,50 @@ public class Controller implements Node{
         return ipAddress;
     }
 
-    public synchronized void registerNode(int peerId, String hostname, int port, Socket socket) throws IOException {
+    public synchronized void registerNode(String hostname, int port, Socket socket) throws IOException {
         
-        int key = peerId;
-        String value = hostname + ":" + port;
+        String key = hostname + ":" + port;
         
         // Check if the node had previously registered
-        if (peerNodes.containsKey(key)) {
+        if (chunkServerInfo.containsKey(key)) {
             // create a new TCPSender to send the response
             TCPSender sender = new TCPSender(socket);
             try {
-                sendRegisterResponse(sender, Protocol.FAILURE, "NULL", "Node had previously registered");
+                sendRegisterResponse(sender, Protocol.FAILURE, "Node had previously registered");
             } catch (IOException e) {
                 System.out.println("Failed to send register response: " + e.getMessage());
             } 
             return;
         }
-    
-        // Check if the peerID is equal to the hashcode of the value
-        if (key != value.hashCode()) {
-            // create a new TCPSender to send the response
-            TCPSender sender = new TCPSender(socket);
-            try {
-                sendRegisterResponse(sender, Protocol.FAILURE, "NULL", "PeerID does not match the hashcode of the IP address and port number");
-            } catch (IOException e) {
-                System.out.println("Failed to send register response: " + e.getMessage());
-            } 
-            return;
-        }
-
         // Add the node to the list of peer nodes
         try {
-            peerNodes.put(key, value);
-            System.out.println("\nAdded node to the list of peer nodes: " + key + " " + value);
+            chunkServerInfo.put(key, new ChunkInfo(key));
+            System.out.println("\nAdded chunkServer: " + key);
             // create a new TCPSender to send the response
             TCPSender sender = new TCPSender(socket);
-            // select a random peer node to send to the new node
-            if (peerNodes.size() == 1) {
-                sendRegisterResponse(sender, Protocol.SUCCESS, value, "Registration request successful. The number of peer nodes currently registered: (" + peerNodes.size() + ")");
+            if (chunkServerInfo.size() == 1) {
+                sendRegisterResponse(sender, Protocol.SUCCESS, "Registration request successful. The number of chunk servers currently registered: (" + chunkServerInfo.size() + ")");
                 return;
-            }else{
-                String randomPeerNode = "";
-                // as long as the random peer node is not the same as the new node
-                do {
-                    randomPeerNode = peerNodes.get(peerNodes.keySet().toArray()[(int)(Math.random() * peerNodes.size())]);
-                } while(randomPeerNode.equals(value));
-                System.out.println("Random peer node: " + randomPeerNode);
-                sendRegisterResponse(sender, Protocol.SUCCESS, randomPeerNode, "Registration request successful. The number of peer nodes currently registered: (" + peerNodes.size() + ")");
             }
         } catch (IOException e) {
-            System.out.println("Failed to add node to the list of peer nodes: " + e.getMessage());
+            System.out.println("Failed to add node to the list of chunk server nodes: " + e.getMessage());
         } 
     }
    
     // Deregister a peer node
-    public void deregisterNode(int peerID, String hostname, int port, Socket socket) throws Exception {
-        String peerNode = hostname + ":" + port;
-        int peerNodeKey = peerID;
-        if (!peerNodes.containsKey(peerID)) {
-            throw new Exception("Node not found in network: " + peerNodeKey + " " + peerNode);
+    public void deregisterNode(String chunkID, Socket socket) throws Exception {
+        if (!chunkServerInfo.containsKey(chunkID)) {
+            throw new Exception("Node not found in network: " + chunkID);
         }
         try {
             TCPSender sender = new TCPSender(socket);
             // remove node from the list of peer nodes
             sendDeregisterResponse(sender, Protocol.SUCCESS);
-            peerNodes.remove(peerID);
-            System.out.println("Removed node from the list of peer nodes: " + peerNodeKey + " " + peerNode);
+            chunkServerInfo.remove(chunkID);
+            System.out.println("Removed node from the list of chunk server nodes: " + chunkID);
             sender.closeSocket();
         } catch (IOException e) {
-            throw new Exception("Failed to deregister: " + peerNodeKey + " " + peerNode, e);
+            throw new Exception("Failed to deregister: " + chunkID, e);
         } finally {
             try {
                 socket.close();
@@ -151,12 +128,12 @@ public class Controller implements Node{
         }
     }
 
-    // List all peer nodes in the overlay <peerID> <ipaddress>:<port>
-    public void listPeerNodes() {
-        System.out.println("Peer nodes in the overlay:");
-        peerNodes.entrySet().stream()
-            .sorted(Map.Entry.comparingByKey())
-            .forEach(entry -> System.out.println(entry.getKey() + " " + entry.getValue()));
+    // List all chunk servers in the overlay
+    public void listChunkServers() {
+        System.out.println("Chunk Servers in the overlay:");
+        chunkServerInfo.forEach((key, value) -> {
+            System.out.println(key);
+        });
     }
 
     // Exit the overlay
@@ -166,9 +143,8 @@ public class Controller implements Node{
         serverThread.shutdown();
     }
 
-    private void sendRegisterResponse(TCPSender senderSocket, byte status, String randPeer, String info) throws IOException {
-        RegisterResponse response = new RegisterResponse(status, randPeer, info);
-
+    private void sendRegisterResponse(TCPSender senderSocket, byte status, String info) throws IOException {
+        RegisterResponse response = new RegisterResponse(status, info);
         sendMessageToNode(senderSocket, response.getBytes());
         System.out.println("Printing Register Response Info: \n" + response.getInfo());
     }
@@ -194,6 +170,13 @@ public class Controller implements Node{
         }
     }
 
+    // method to check if no heartbeat is received from a node
+    public void checkHeartbeat() {
+        // check if the last heartbeat received from a node is more than 5 seconds
+        // if so, remove the node from the list of peer nodes
+        // and send a message to all other nodes to remove the node from their list of peer nodes
+    }
+
     public void onEvent(Event event, Socket socket) throws IOException {
 
         switch (event.getType()) {
@@ -201,11 +184,10 @@ public class Controller implements Node{
                 // cast the event to a RegisterRequest
                 RegisterRequest request = (RegisterRequest) event;
                 System.out.println("Printing Register Request Info: \n" + request.getInfo());
-                int peerID = request.getPeerID();
                 String hostname = request.getIpAddress();
                 int port = request.getPortNumber();
                 // Register the node and send a success response
-                registerNode(peerID, hostname, port, socket);
+                registerNode(hostname, port, socket);
 
                 break;
     
@@ -213,13 +195,23 @@ public class Controller implements Node{
                 // cast the event to a DeregisterRequest
                 DeregisterRequest deregisterRequest = (DeregisterRequest) event;
                 try {
-                    deregisterNode(deregisterRequest.getPeerID(), deregisterRequest.getIpAddress(), deregisterRequest.getPortNumber(), socket);
+                    deregisterNode(deregisterRequest.getChunkID(), socket);
                     System.out.println("Printing deregister Request Info: \n" + deregisterRequest.getInfo());
                 } catch (Exception e) {
                     System.out.println("Failed to deregister node: " + e.getMessage());
                 }
                 break;
-                
+
+            case Protocol.MINOR_HEARTBEAT:
+                // cast the event to a MinorHeartBeat
+                MinorHeartBeat minorHeartbeat = (MinorHeartBeat) event;
+                System.out.println("Printing Minor Heartbeat Info: \n" + minorHeartbeat.getInfo());
+                break;
+            case Protocol.MAJOR_HEARTBEAT:
+                // cast the event to a MinorHeartBeat
+                MinorHeartBeat majorHeartbeat = (MinorHeartBeat) event;
+                System.out.println("Printing Major Heartbeat Info: \n" + majorHeartbeat.getInfo());
+                break;
             default:
                 System.out.println("Unknown event type: " + event.getType());
                 break;
@@ -273,12 +265,12 @@ public class Controller implements Node{
             System.out.print("Enter command: ");
             String command = scanner.nextLine();
 
-            if (command.equals("peer-nodes")) {
-                controllerNode.listPeerNodes();
+            if (command.equals("chunk-servers")) {
+                controllerNode.listChunkServers();
             }
             else if ((command.toLowerCase().equals("h")) || (command.equals("help"))) {
                 System.out.println("Commands:");
-                System.out.println("peer-nodes: List all peer nodes in the overlay");
+                System.out.println("chunk-servers: List all peer nodes in the overlay");
                 System.out.println("exit: Exit the topology");
             } 
             else if (command.equals("exit")) {
