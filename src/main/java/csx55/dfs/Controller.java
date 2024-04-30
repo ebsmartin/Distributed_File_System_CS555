@@ -219,10 +219,10 @@ public class Controller implements Node{
         // get the chunk server to store the file
         List<String> chunkServer = getChunkServers(fileSize);
         try {
-            sendUploadResponse(this.chunkServerSockets.get(clientNode), Protocol.SUCCESS, chunkServer);
+            sendUploadResponse(this.clientSockets.get(clientNode), Protocol.SUCCESS, chunkServer);
         } catch (IOException e) {
             System.out.println("Failed to send upload response: " + e.getMessage());
-            sendUploadResponse(chunkServerSockets.get(clientNode), Protocol.FAILURE, Collections.emptyList());
+            sendUploadResponse(clientSockets.get(clientNode), Protocol.FAILURE, Collections.emptyList());
         }
     }
 

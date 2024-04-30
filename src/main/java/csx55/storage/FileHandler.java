@@ -12,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,7 +32,7 @@ public class FileHandler {
     private boolean corruptedFileFound = false;
 
     // thread safe data structure to store file information
-    private final ConcurrentHashMap<String, List<Path>> fileMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Set<Path>> fileMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, byte[]> checksums = new ConcurrentHashMap<>();
 
     
@@ -44,7 +46,7 @@ public class FileHandler {
     }
 
     public boolean hasNewChunks() {
-        int currentSize = fileMap.values().stream().mapToInt(List::size).sum();
+        int currentSize = fileMap.values().stream().mapToInt(Set::size).sum();
         boolean hasNew = currentSize > lastCheckedSize;
         lastCheckedSize = currentSize;
         return hasNew;
@@ -61,7 +63,7 @@ public class FileHandler {
     public synchronized void setFileDirectory() {
         String tmpDir = System.getProperty("java.io.tmpdir");
         fileDirectory = tmpDir + File.separator + "chunk-server" + File.separator;
-        File dir = new File(fileDirectory).getParentFile(); // get the parent directory
+        File dir = new File(fileDirectory);
     
         if (!dir.exists()) {
             dir.mkdirs();  // create the directory if it doesn't exist
@@ -93,7 +95,7 @@ public class FileHandler {
             System.out.println("File path is null.");
             return;
         }
-        
+
         if (chunkServer == null) {
             System.out.println("ChunkServer node is null.");
             return;
@@ -106,7 +108,7 @@ public class FileHandler {
                 System.out.println("File stored locally at " + destinationPath);
                 long fileSize = fileContents.length;
                 this.totalSpace -= fileSize;
-                List<Path> chunkPaths = fileMap.computeIfAbsent(fileName, k -> new ArrayList<>());
+                Set<Path> chunkPaths = fileMap.computeIfAbsent(fileName, k -> new HashSet<>());
                 chunkPaths.add(destinationPath);
                 newChunks.add(destinationPath);
                 MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -136,7 +138,7 @@ public class FileHandler {
             System.out.println("Chunks of file found: " +  fileMap.get(fileName));
         }
     
-        List<Path> chunks = fileMap.get(fileName);
+        Set<Path> chunks = fileMap.get(fileName);
         for (Path chunk : chunks) {
             File chunkFile = chunk.toFile();
             DownloadResponse downloadResponse = new DownloadResponse(chunkFile);
@@ -189,7 +191,7 @@ public class FileHandler {
             return false;
         }
     
-        List<Path> chunks = fileMap.get(fileName);
+        Set<Path> chunks = fileMap.get(fileName);
         for (Path chunkFilePath : chunks) {
             try {
                 long fileSize = Files.size(chunkFilePath);
@@ -218,7 +220,7 @@ public class FileHandler {
             return false;
         }
     
-        List<Path> chunks = fileMap.get(fileName);
+        Set<Path> chunks = fileMap.get(fileName);
         Path chunkFilePath = Paths.get(getWorkingDirectory().toString(), fileName + "_" + chunkName);
     
         if (!chunks.contains(chunkFilePath)) {
@@ -241,16 +243,16 @@ public class FileHandler {
     }
 
     // get file list
-    public ConcurrentHashMap<String, List<Path>> getFileMap() {
+    public ConcurrentHashMap<String, Set<Path>> getFileMap() {
         return fileMap;
     }
 
     public void printFileList() {
         // Return a list of files stored locally
         System.out.println("Files stored locally:");
-        for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
+        for (Map.Entry<String, Set<Path>> entry : fileMap.entrySet()) {
             String fileName = entry.getKey();
-            List<Path> chunks = entry.getValue();
+            Set<Path> chunks = entry.getValue();
             System.out.println("File: " + fileName);
             for (Path chunk : chunks) {
                 System.out.println("\tChunk: " + chunk.getFileName().toString());

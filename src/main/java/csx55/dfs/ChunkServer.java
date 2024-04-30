@@ -293,7 +293,7 @@ public class ChunkServer implements Node {
                 }                
                 break;
 
-                case Protocol.DOWNLOAD_REQUEST:
+            case Protocol.DOWNLOAD_REQUEST:
                 DownloadRequest downloadRequest = (DownloadRequest) event;
                 System.out.println("Printing Download Request Info: \n" + downloadRequest.getInfo());
             
