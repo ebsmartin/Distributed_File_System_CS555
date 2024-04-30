@@ -19,7 +19,7 @@ public class Upload implements Event{
         setBytes(message);
     }
 
-    public Upload(File chunkFile, int totalChunksBeingSent, List<String> forwardToTheseChunks) {
+    public Upload(File chunkFile, byte[] fileContents, int totalChunksBeingSent, List<String> forwardToTheseChunks) {
         this.chunkFile = chunkFile;
         String[] parts = chunkFile.getName().split("_");
         if (parts.length != 2) {
@@ -29,11 +29,7 @@ public class Upload implements Event{
         this.chunkFileName = parts[1];
         this.totalChunksBeingSent = totalChunksBeingSent;
         this.forwardToTheseChunks = forwardToTheseChunks;
-        try {
-            this.fileContents = Files.readAllBytes(chunkFile.toPath());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        this.fileContents = fileContents;
     }
 
     public int getType() {

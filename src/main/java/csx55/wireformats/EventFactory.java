@@ -47,6 +47,10 @@ public class EventFactory {
                     return new MinorHeartBeat(message);
                 case Protocol.MAJOR_HEARTBEAT:
                     return new MajorHeartBeat(message);
+                case Protocol.UPLOAD_REQUEST:
+                    return new UploadRequest(message);
+                case Protocol.UPLOAD_RESPONSE:
+                    return new UploadResponse(message);
                 default:
                     throw new IllegalArgumentException("Invalid event type: " + eventType);
             }

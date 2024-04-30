@@ -13,4 +13,6 @@ public class Protocol {
     public static final int UPLOAD = 9;
     public static final int MINOR_HEARTBEAT = 10;
     public static final int MAJOR_HEARTBEAT = 11;
+    public static final int UPLOAD_REQUEST = 12;
+    public static final int UPLOAD_RESPONSE = 13;
 }

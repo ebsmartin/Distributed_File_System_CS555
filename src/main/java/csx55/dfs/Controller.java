@@ -1,9 +1,11 @@
 
 package csx55.dfs;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Scanner;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import java.io.IOException;
@@ -23,7 +25,7 @@ public class Controller implements Node{
     // using the wrapper class Collections to synchronize the map to prevent concurrent modification
     // maps hostname:port to a ChunkInfo object
     private Map<String, ChunkInfo> chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
-
+    private Map<String, TCPSender> chunkServerSockets = Collections.synchronizedMap(new HashMap<String, TCPSender>());
     // Singleton instance to ensure only one controllerNode is created
     private static Controller instance = null;
 
@@ -96,6 +98,7 @@ public class Controller implements Node{
             System.out.println("\nAdded chunkServer: " + key);
             // create a new TCPSender to send the response
             TCPSender sender = new TCPSender(socket);
+            chunkServerSockets.put(key, sender);
             if (chunkServerInfo.size() == 1) {
                 sendRegisterResponse(sender, Protocol.SUCCESS, "Registration request successful. The number of chunk servers currently registered: (" + chunkServerInfo.size() + ")");
                 return;
@@ -107,13 +110,14 @@ public class Controller implements Node{
    
     // Deregister a peer node
     public void deregisterNode(String chunkID, Socket socket) throws Exception {
-        if (!chunkServerInfo.containsKey(chunkID)) {
+        if (!chunkServerSockets.containsKey(chunkID)) {
             throw new Exception("Node not found in network: " + chunkID);
         }
         try {
             TCPSender sender = new TCPSender(socket);
             // remove node from the list of peer nodes
             sendDeregisterResponse(sender, Protocol.SUCCESS);
+            chunkServerSockets.remove(chunkID);
             chunkServerInfo.remove(chunkID);
             System.out.println("Removed node from the list of chunk server nodes: " + chunkID);
             sender.closeSocket();
@@ -177,6 +181,55 @@ public class Controller implements Node{
         // and send a message to all other nodes to remove the node from their list of peer nodes
     }
 
+    public List<String> getChunkServers(float fileSize) {
+        if (chunkServerInfo.isEmpty()) {
+            return Collections.emptyList();
+        }
+        // Create a list to store the chunk servers
+        List<String> chunkServers = new ArrayList<>();
+    
+        // Loop through the chunkServerInfo map
+        for (Map.Entry<String, ChunkInfo> entry : chunkServerInfo.entrySet()) {
+            ChunkInfo chunkInfo = entry.getValue();
+    
+            // Check if the chunk server has enough space
+            if (chunkInfo.getAvailableSpace() >= fileSize) {
+                // Add the chunkID to the list
+                chunkServers.add(chunkInfo.getChunkID());
+    
+                // If the list has 3 items, break the loop
+                if (chunkServers.size() == 3) {
+                    break;
+                }
+            }
+        }
+        // Return the list of chunk servers
+        return chunkServers;
+    }
+
+    // method to handle the upload request
+    public void handleUploadRequest(UploadRequest uploadRequest) throws IOException {
+        // get the file size
+        float fileSize = uploadRequest.getFileSize();
+        // get the client node
+        String clientNode = uploadRequest.getClientNode();
+        // get the chunk server to store the file
+        List<String> chunkServer = getChunkServers(fileSize);
+        try {
+            sendUploadResponse(this.chunkServerSockets.get(clientNode), Protocol.SUCCESS, chunkServer);
+        } catch (IOException e) {
+            System.out.println("Failed to send upload response: " + e.getMessage());
+            sendUploadResponse(chunkServerSockets.get(clientNode), Protocol.FAILURE, Collections.emptyList());
+        }
+    }
+
+    public void sendUploadResponse(TCPSender sender, byte status, List<String> chunkServers) throws IOException {
+        UploadResponse response = new UploadResponse(status, chunkServers);
+        sendMessageToNode(sender, response.getBytes());
+        System.out.println("Sending Upload Response: \n" + response.getInfo());
+    }
+        
+
     public void onEvent(Event event, Socket socket) throws IOException {
 
         switch (event.getType()) {
@@ -211,6 +264,13 @@ public class Controller implements Node{
                 // cast the event to a MinorHeartBeat
                 MinorHeartBeat majorHeartbeat = (MinorHeartBeat) event;
                 System.out.println("Printing Major Heartbeat Info: \n" + majorHeartbeat.getInfo());
+                break;
+
+            case Protocol.UPLOAD_REQUEST:
+                // cast the event to a UploadRequest
+                UploadRequest uploadRequest = (UploadRequest) event;
+                System.out.println("Printing Upload Request Info: \n" + uploadRequest.getInfo());
+                handleUploadRequest(uploadRequest);
                 break;
             default:
                 System.out.println("Unknown event type: " + event.getType());

@@ -8,18 +8,26 @@ import java.util.Scanner;
 
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.tools.FileObject;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import csx55.transport.TCPRecieverThread;
 import csx55.transport.TCPSender;
 import csx55.transport.TCPServerThread;
@@ -37,6 +45,9 @@ public class Client implements Node {
     private TCPSender controllerSenderSocket; // sender to send messages to the controller
     private String controllerHost; // controller host
     private int controllerPort; // controller port
+
+    String filePathToUpload = ""; // file path to upload
+    String fileNameToDownload = ""; // file name to download
 
     // Peer Node Information
     private String IpAddress; // ip Address
@@ -162,6 +173,61 @@ public class Client implements Node {
         }
     }
 
+    public void handleUploadResponse(UploadResponse uploadResponse) {
+        System.out.println("Upload Response Info: \n" + uploadResponse.getInfo());
+        // send the file to the returned node
+        if (uploadResponse.getSuccessStatus() == Protocol.SUCCESS) {
+            // get the chunk servers
+            List<String> chunkServers = uploadResponse.getChunkServers();
+            // get the file path
+            String filePath = this.filePathToUpload;
+            // get the file name
+            String fileName = Paths.get(filePath).getFileName().toString();
+            // send the file to the chunk servers
+            try {
+                // Read the file into a byte array
+                byte[] fileBytes = Files.readAllBytes(Paths.get(filePath));
+
+                // Split the byte array into 64KB chunks
+                int chunkSize = 64 * 1024; // 64KB
+                byte[][] chunks = new byte[(int) Math.ceil(fileBytes.length / (double) chunkSize)][];
+                for (int i = 0; i < chunks.length; i++) {
+                    int start = i * chunkSize;
+                    int length = Math.min(chunkSize, fileBytes.length - start);
+                    chunks[i] = Arrays.copyOfRange(fileBytes, start, start + length);
+                }
+
+                Socket socket = new Socket(chunkServers.get(0).split(":")[0], Integer.parseInt(chunkServers.get(0).split(":")[1]));
+                TCPSender sender = new TCPSender(socket);
+                for (byte[] chunk : chunks) {
+                    // create a file path for the chunk with _chunk<number> appended to the file name
+                    String chunkFilePath = filePath + "_chunk" + (chunks.length + 1);
+                    File chunkFile = new File(chunkFilePath);
+                    Upload upload = new Upload(chunkFile, chunk, chunks.length, chunkServers);
+                    sender.sendData(upload.getBytes());
+                }
+            } catch (IOException e) {
+                System.out.println("Failed to read file: " + filePath);
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void handleDownloadResponse(DownloadResponse downloadResponse) {
+        System.out.println("Download Response Info: \n" + downloadResponse.getInfo());
+    }
+
+    public void createUploadRequest(String clientNode, float fileSize, String fileName) {
+        try {
+            UploadRequest uploadRequest = new UploadRequest(clientNode, fileSize, fileName);
+            System.out.println("Upload Request Info: \n" + uploadRequest.getInfo());
+            controllerSenderSocket.sendData(uploadRequest.getBytes());
+        } catch (IOException e) {
+            System.out.println("Failed to create upload request: " + e.getMessage());
+        }
+    }
+
+
     // -------------------------------------------------- On Event Switch --------------------------------------------------
 
     public void onEvent(Event event, Socket socket) throws IOException {
@@ -174,6 +240,18 @@ public class Client implements Node {
                 handleRegistrationResponse(registerResponse);
                 break;
             
+            case Protocol.UPLOAD_RESPONSE:
+                // casting the event to a UploadResponse
+                UploadResponse uploadResponse = (UploadResponse) event;
+                handleUploadResponse(uploadResponse);
+            
+                break;
+            
+            case Protocol.DOWNLOAD_RESPONSE:
+                // casting the event to a DownloadResponse
+                DownloadResponse downloadResponse = (DownloadResponse) event;
+                // handleDownloadResponse(downloadResponse);
+                break;
             default:
                 System.out.println("Unknown event type: " + event.getType());
         }
@@ -232,14 +310,25 @@ public class Client implements Node {
 
                         break;
                     case "upload":
-                        // Stores the specified file into the chord system. The file is not directly stored on the peer node where
-                        // the command is issued. Instead, the file is stored in the peer node with the smallest peerID that is
-                        // greater than the hash code of the file name (with extension and without path). The peer node where
-                        // the command is issued is responsible for reading the file and sending it to the correct peer node. Example
-                        // usage: upload work/projects/readme.txt
                         if (words.length > 1) {
                             String filePath = words[1];
-                            // TODO
+                            try {
+                                // Read the file into a byte array
+                                Path path = Paths.get(filePath);
+                                byte[] fileBytes = Files.readAllBytes(path);
+
+                                node.filePathToUpload = filePath;
+
+                                // Calculate the file size in MB
+                                float fileSize = fileBytes.length / (1024.0f * 1024.0f);
+                    
+                                // Create and send an UploadRequest
+                                node.createUploadRequest(node.getNode(), fileSize, path.getFileName().toString());
+                    
+                            } catch (IOException e) {
+                                System.out.println("Failed to read file: " + filePath);
+                                e.printStackTrace();
+                            }
                         } else {
                             System.out.println("Please specify a file path to upload.");
                         }
