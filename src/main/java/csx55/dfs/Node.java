@@ -14,11 +14,4 @@ public interface Node {
      */
     void onEvent(Event event, Socket socket) throws IOException;
 
-    /**
-     * Generates and returns a unique node ID based on the node's IP address and port number.
-     * 
-     * @return The generated unique node ID.
-     */
-    int generateNodeID(String node);
-
 }

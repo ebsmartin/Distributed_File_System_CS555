@@ -4,11 +4,11 @@
 This project involves implementing a simple peer-to-peer (P2P) network based on the Chord protocol, as part of the CS555 Distributed Systems course at Colorado State University. The Chord protocol provides a way to efficiently locate nodes in a distributed system, where each node is assigned a 32-bit integer identifier.
 
 ## Objective
-The primary objective of this project is to build the logical overlay for the Chord network and enable efficient traversal, storage, and retrieval of content across the network. This project covers several key aspects of distributed systems including node identification, discovery node implementation, finger table management, and handling of node joins and departures.
+The primary objective of this project is to build the logical overlay for the Chord network and enable efficient traversal, storage, and retrieval of content across the network. This project covers several key aspects of distributed systems including node identification, controller node implementation, finger table management, and handling of node joins and departures.
 
 ## Features
 - **Node Identification**: Each node, identified by a unique `peerID` generated using the `hashCode()` method on the node's IP and port combination, interacts within the network.
-- **Discovery Node**: Acts as an initial contact point for nodes joining the system, maintaining a registry of active nodes.
+- **Controller Node**: Acts as an initial contact point for nodes joining the system, maintaining a registry of active nodes.
 - **Finger Table**: Implements a routing mechanism over a 32-bit identifier space, helping in efficient query resolution.
 - **Data Storage and Retrieval**: Utilizes the network's structure to store and retrieve files, with the key based on the hash of the file name.
 
@@ -25,8 +25,8 @@ The implementation follows a structured overlay network where each node maintain
 
 ## Usage
 To run the project:
-1. Start the discovery node: `java csx55.chord.DiscoveryNode <portnum>`
-2. Start peer nodes: `java csx55.chord.PeerNode <discovery-ip> <discovery-port>`
+1. Start the controller node: `java csx55.chord.ControllerNode <portnum>`
+2. Start peer nodes: `java csx55.chord.PeerNode <controller-ip> <controller-port>`
 
 ## Contributing
 This project is an academic exercise and individual effort was required. Collaboration was limited to architectural discussions.

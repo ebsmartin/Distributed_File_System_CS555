@@ -16,42 +16,40 @@ import csx55.transport.TCPSender;
 import csx55.transport.TCPServerThread;
 import csx55.wireformats.*;
 
-public class Discovery implements Node{
+public class Controller implements Node{
     
     // Hash table to store the <peerID, hostname:portnum> of the peer nodes
     // using the wrapper class Collections to synchronize the map to prevent concurrent modification
-    private Map<Integer, String> peerNodes = Collections.synchronizedMap(new HashMap<Integer, String>());
+    private Map<Integer, String> chunkServerInfo = Collections.synchronizedMap(new HashMap<String, ChunkInfo>());
 
-    // Singleton instance to ensure only one discoveryNode is created
-    private static Discovery instance = null;
+    // Singleton instance to ensure only one controllerNode is created
+    private static Controller instance = null;
 
     // user defined port number and ip address
     private int portNumber; // port number to listen on
     private String ipAddress; // ip address to listen on
     private String node; // hostname:port
-    private int peerID; // hashcode of the node
 
     private TCPServerThread serverThread; // server thread to listen for incoming connections
 
-    // Constructor is private so that only one discoveryNode can be created
-    private Discovery(int portNumber) {
+    // Constructor is private so that only one controllerNode can be created
+    private Controller(int portNumber) {
         this.portNumber = portNumber;
-        this.peerNodes = Collections.synchronizedMap(new HashMap<Integer, String>());
+        this.chunkServers = Collections.synchronizedMap(new HashMap<Integer, String>());
 
         // get the local ip Address
         try {
             this.ipAddress = InetAddress.getLocalHost().getHostAddress();
             this.node = this.ipAddress + ":" + this.portNumber;
-            this.peerID = generateNodeID(this.node);
         } catch (UnknownHostException e) {
             System.out.println("Failed to get local IP Address: " + e.getMessage());
         }
     }
 
-    // Public static method to get the single instance of the Discovery
-    public static Discovery getInstance(int portNumber) {
+    // Public static method to get the single instance of the Controller
+    public static Controller getInstance(int portNumber) {
         if (instance == null) {
-            instance = new Discovery(portNumber);
+            instance = new Controller(portNumber);
         }
         return instance;
     }
@@ -65,12 +63,6 @@ public class Discovery implements Node{
             System.out.println("Failed to start the server: " + e.getMessage());
         }
         
-    }
-
-    @Override
-    public int generateNodeID(String node) {
-        // Return the hash code of the unique identifier <IP>:<port> (this.node)
-        return node.hashCode();
     }
 
     public int getPortNumber() {
@@ -170,7 +162,7 @@ public class Discovery implements Node{
     // Exit the overlay
     public void exit() {
         // Close the server thread
-        System.out.println("Discovery Node is leaving the topology. Goodbye!");
+        System.out.println("Controller Node is leaving the topology. Goodbye!");
         serverThread.shutdown();
     }
 
@@ -235,9 +227,9 @@ public class Discovery implements Node{
     }
     
 
-    // Main method to run the discoveryNode
+    // Main method to run the controllerNode
     // gradle build
-    // ~/CS555/hw3/build/classes/java/main$ java csx55.chord.DiscoveryNode 45555
+    // ~/CS555/hw3/build/classes/java/main$ java csx55.chord.ControllerNode 45555
     public static void main(String[] args) {
 
         if (args.length != 1) {
@@ -258,22 +250,22 @@ public class Discovery implements Node{
             return;
         }
     
-        // create a new discoveryNode
-        Discovery discoveryNode = new Discovery(portNumber);
+        // create a new controllerNode
+        Controller controllerNode = new Controller(portNumber);
 
         // start the server thread
-        discoveryNode.startServer();
+        controllerNode.startServer();
 
         // get the local ip Address
         try {
-            discoveryNode.ipAddress = InetAddress.getLocalHost().getHostAddress();
+            controllerNode.ipAddress = InetAddress.getLocalHost().getHostAddress();
         } catch (UnknownHostException e) {
             System.out.println("Failed to get local IP Address: " + e.getMessage());
             return;
         }
 
-        System.out.println("Discovery Node is listening on port " + portNumber);
-        System.out.println("IP Address: " + discoveryNode.ipAddress);
+        System.out.println("Controller Node is listening on port " + portNumber);
+        System.out.println("IP Address: " + controllerNode.ipAddress);
         System.out.println("(Type h or help for a list of commands)\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -282,7 +274,7 @@ public class Discovery implements Node{
             String command = scanner.nextLine();
 
             if (command.equals("peer-nodes")) {
-                discoveryNode.listPeerNodes();
+                controllerNode.listPeerNodes();
             }
             else if ((command.toLowerCase().equals("h")) || (command.equals("help"))) {
                 System.out.println("Commands:");
@@ -290,7 +282,7 @@ public class Discovery implements Node{
                 System.out.println("exit: Exit the topology");
             } 
             else if (command.equals("exit")) {
-                discoveryNode.exit();
+                controllerNode.exit();
                 scanner.close();
                 break;
             }

@@ -29,11 +29,11 @@ public class Peer implements Node {
     // Associated Server Thread
     private TCPServerThread serverThread;
 
-    // Discovery Information 
-    private Socket discoverySocket; // socket to connect to the discovery
-    private TCPSender discoverySenderSocket; // sender to send messages to the discovery
-    private String discoveryHost; // discovery host
-    private int discoveryPort; // discovery port
+    // Controller Information 
+    private Socket controllerSocket; // socket to connect to the controller
+    private TCPSender controllerSenderSocket; // sender to send messages to the controller
+    private String controllerHost; // controller host
+    private int controllerPort; // controller port
 
     // Peer Node Information
     private String IpAddress; // ip Address
@@ -59,9 +59,9 @@ public class Peer implements Node {
         } catch (UnknownHostException e) {
             System.out.println("Failed to get local IP Address: " + e.getMessage());
         }
-        // set the discovery host and port
-        this.discoveryHost = hostname;
-        this.discoveryPort = port;
+        // set the controller host and port
+        this.controllerHost = hostname;
+        this.controllerPort = port;
     }
 
     public void bootUpNodeConnection() {
@@ -85,25 +85,25 @@ public class Peer implements Node {
         // instantiate the file handler
         this.fileHandler = new FileHandler(this);
 
-        // connect to the discovery
+        // connect to the controller
         try {
-            setDiscoverySocket(new Socket(this.discoveryHost, this.discoveryPort));
+            setControllerSocket(new Socket(this.controllerHost, this.controllerPort));
         } catch (IOException e) {
-            System.out.println("Failed to connect to the discovery: " + e.getMessage());
+            System.out.println("Failed to connect to the controller: " + e.getMessage());
         }
         
         try {
             // create a TCPSender to send the register request
-            TCPSender sender = new TCPSender(this.discoverySocket);
-            setDiscoverySenderSocket(sender);
-            // create a new thread to listen for responses from the discovery
-            TCPRecieverThread reciever = new TCPRecieverThread(this.discoverySocket, this);
+            TCPSender sender = new TCPSender(this.controllerSocket);
+            setControllerSenderSocket(sender);
+            // create a new thread to listen for responses from the controller
+            TCPRecieverThread reciever = new TCPRecieverThread(this.controllerSocket, this);
             new Thread(reciever).start();  // start the reciever thread
             // create the register request
             RegisterRequest registerRequest = new RegisterRequest(peerID, IpAddress, portNumber);
             System.out.println("Printing Register Request Info: \n" + registerRequest.getInfo());
             // send the register request
-            discoverySenderSocket.sendData(registerRequest.getBytes());
+            controllerSenderSocket.sendData(registerRequest.getBytes());
         } catch (IOException e) {
             System.out.println("Failed to send the register request: " + e.getMessage());
         }
@@ -131,12 +131,12 @@ public class Peer implements Node {
         this.portNumber = portNumber;
     }
 
-    public void setDiscoverySocket(Socket discoverySocket) {
-        this.discoverySocket = discoverySocket;
+    public void setControllerSocket(Socket controllerSocket) {
+        this.controllerSocket = controllerSocket;
     }
 
-    public void setDiscoverySenderSocket(TCPSender discoverySenderSocket) {
-        this.discoverySenderSocket = discoverySenderSocket;
+    public void setControllerSenderSocket(TCPSender controllerSenderSocket) {
+        this.controllerSenderSocket = controllerSenderSocket;
     }
 
     public String getIpAddress() {
@@ -155,12 +155,12 @@ public class Peer implements Node {
         return node;
     }
 
-    public void deregisterNode(int peerID, String discoveryHost, int discoveryPort) throws IOException {
+    public void deregisterNode(int peerID, String controllerHost, int controllerPort) throws IOException {
         try{
             // create a new deregister request
             DeregisterRequest deregisterRequest = new DeregisterRequest(peerID, IpAddress, portNumber);
-            // Send a deregister request to the discovery
-            discoverySenderSocket.sendData(deregisterRequest.getBytes());
+            // Send a deregister request to the controller
+            controllerSenderSocket.sendData(deregisterRequest.getBytes());
         } catch (IOException e) {
             System.out.println("Failed to send the deregister request: " + e.getMessage());
         }            
@@ -178,12 +178,12 @@ public class Peer implements Node {
                 sendToNode(successor.split(" ")[1], deregisterRequest);
                 // close the server thread
                 serverThread.shutdown();
-                // close the connection to the discovery
-                discoverySenderSocket.closeSocket();
-                discoverySocket.close();
+                // close the connection to the controller
+                controllerSenderSocket.closeSocket();
+                controllerSocket.close();
                 System.out.println("Deregistered successfully");
             } catch (IOException e) {
-                System.out.println("Failed to close the Server or DiscoveryNode socket: " + e.getMessage());
+                System.out.println("Failed to close the Server or ControllerNode socket: " + e.getMessage());
             }
         }
     }
@@ -350,12 +350,12 @@ public class Peer implements Node {
                 // For the case when the successor is null, many nodes are joining at once so some may not be ready
                 if (this.successor == null) {
                     // Debug
-                    System.out.println("Successor is null. So, requesting new rand node from Discovery.");
+                    System.out.println("Successor is null. So, requesting new rand node from Controller.");
                     String originalIp = findSuccessorRequest.getIpAddress();
                     int originalPort = findSuccessorRequest.getPortNumber();
                     int originalPeerID = requestingNode.hashCode();
                     RegisterRequest registerRequest = new RegisterRequest(originalPeerID, originalIp, originalPort);
-                    discoverySenderSocket.sendData(registerRequest.getBytes());
+                    controllerSenderSocket.sendData(registerRequest.getBytes());
                     break;
                 }
 
@@ -622,21 +622,21 @@ public class Peer implements Node {
     // -------------------------------------------------- Main Method --------------------------------------------------
     public static void main(String[] args) {
         if (args.length != 2) {
-            System.out.println("Please provide exactly two arguments: discovery-ip discovery-port");
+            System.out.println("Please provide exactly two arguments: controller-ip controller-port");
             return;
         }
 
-        String discoveryHost = args[0];
-        int discoveryPort;
+        String controllerHost = args[0];
+        int controllerPort;
 
         try {
-            discoveryPort = Integer.parseInt(args[1]);
+            controllerPort = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
-            System.out.println("Discovery port must be an integer");
+            System.out.println("Controller port must be an integer");
             return;
         }
 
-        Peer node = new Peer(discoveryHost, discoveryPort);
+        Peer node = new Peer(controllerHost, controllerPort);
         node.bootUpNodeConnection();
         int delayToStartStabilizer = 10;
         int periodToStabilize = 10;
@@ -654,8 +654,8 @@ public class Peer implements Node {
                 switch (action) {
                     case "exit":
                         try {
-                            System.out.println("Deregistering from the discovery...");
-                            node.deregisterNode(node.peerID, discoveryHost, discoveryPort);
+                            System.out.println("Deregistering from the controller...");
+                            node.deregisterNode(node.peerID, controllerHost, controllerPort);
 
                             System.out.println("Exiting the network... Cleaning up...");
                             node.exitChord();
