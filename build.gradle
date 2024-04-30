@@ -5,7 +5,7 @@ plugins {
 
 // jar {
 // 	manifest {
-// 		attributes 'Main-Class': 'csx55.node.Discovery'
+// 		attributes 'Main-Class': 'csx55.node.Controller'
 // 	}
 // }
 
