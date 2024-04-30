@@ -10,8 +10,7 @@ public class Protocol {
     public static final byte FAILURE = 6;
     public static final int DOWNLOAD_REQUEST = 7;
     public static final int DOWNLOAD_RESPONSE = 8;
-    public static final int MIGRATION = 9;
-    public static final int MIGRATION_RESPONSE = 10;
-    public static final int MINOR_HEARTBEAT = 11;
-    public static final int MAJOR_HEARTBEAT = 12;
+    public static final int UPLOAD = 9;
+    public static final int MINOR_HEARTBEAT = 10;
+    public static final int MAJOR_HEARTBEAT = 11;
 }

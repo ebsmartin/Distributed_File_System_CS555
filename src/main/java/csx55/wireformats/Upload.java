@@ -5,20 +5,21 @@ import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.util.List;
 
-public class Migration implements Event{
+public class Upload implements Event{
 
-    private int messageType = Protocol.MIGRATION;
+    private int messageType = Protocol.UPLOAD;
     private String fileName;
     private File chunkFile;
     private String chunkFileName;
     private int totalChunksBeingSent;
     private List<String> forwardToTheseChunks;
+    private byte[] fileContents;
 
-    public Migration(byte[] message) throws IOException {
+    public Upload(byte[] message) throws IOException {
         setBytes(message);
     }
 
-    public Migration(File chunkFile, int totalChunksBeingSent, List<String> forwardToTheseChunks) {
+    public Upload(File chunkFile, int totalChunksBeingSent, List<String> forwardToTheseChunks) {
         this.chunkFile = chunkFile;
         String[] parts = chunkFile.getName().split("_");
         if (parts.length != 2) {
@@ -28,10 +29,15 @@ public class Migration implements Event{
         this.chunkFileName = parts[1];
         this.totalChunksBeingSent = totalChunksBeingSent;
         this.forwardToTheseChunks = forwardToTheseChunks;
+        try {
+            this.fileContents = Files.readAllBytes(chunkFile.toPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public int getType() {
-        return Protocol.MIGRATION;
+        return Protocol.UPLOAD;
     }
 
     public String getFileName() {
@@ -40,6 +46,18 @@ public class Migration implements Event{
 
     public File getFile() {
         return chunkFile;
+    }
+
+    public float getFileSize() {
+        return chunkFile.length();
+    }
+
+    public byte[] getFileContents() {
+        return fileContents;
+    }
+
+    public String getFilePath() {
+        return chunkFile.getPath();
     }
 
     public String getChunkFileName() {
@@ -83,7 +101,10 @@ public class Migration implements Event{
             byte[] chunkBytes = chunk.getBytes();
             dout.writeInt(chunkBytes.length);
             dout.write(chunkBytes);
-        }        
+        }
+        dout.writeInt(fileContents.length);
+        dout.write(fileContents);
+
         dout.flush();
         byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
         byteArrayOutputStream.close();
@@ -114,6 +135,9 @@ public class Migration implements Event{
             din.readFully(chunkBytes);
             forwardToTheseChunks.add(new String(chunkBytes));
         }
+        int fileContentsLength = din.readInt();
+        fileContents = new byte[fileContentsLength];
+        din.readFully(fileContents);
     
         baInputStream.close();
         din.close();

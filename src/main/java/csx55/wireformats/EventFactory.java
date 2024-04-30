@@ -41,10 +41,8 @@ public class EventFactory {
                     return new DownloadRequest(message);
                 case Protocol.DOWNLOAD_RESPONSE:
                     return new DownloadResponse(message);
-                case Protocol.MIGRATION:
-                    return new Migration(message);
-                case Protocol.MIGRATION_RESPONSE:
-                    return new MigrationResponse(message);
+                case Protocol.UPLOAD:
+                    return new Upload(message);
                 case Protocol.MINOR_HEARTBEAT:
                     return new MinorHeartBeat(message);
                 case Protocol.MAJOR_HEARTBEAT:

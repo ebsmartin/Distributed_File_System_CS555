@@ -27,9 +27,8 @@ import csx55.wireformats.*;
 import csx55.storage.*;
 
 
-public class ChunkServer implements Node {
+public class Client implements Node {
 
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     // Associated Server Thread
     private TCPServerThread serverThread;
 
@@ -44,11 +43,7 @@ public class ChunkServer implements Node {
     private int portNumber = 0;  // port number
     private String node; // hostname:port
 
-    // File Manager
-    private FileHandler fileHandler;
-
-
-    public ChunkServer(String hostname, int port) {
+    public Client(String hostname, int port) {
         
         // get the local ip Address
         try {
@@ -76,9 +71,6 @@ public class ChunkServer implements Node {
         // set the node to the hostname:port
         this.node = this.IpAddress + ":" + this.portNumber;
 
-        // instantiate the file handler
-        this.fileHandler = new FileHandler(this);
-
         // connect to the controller
         try {
             setControllerSocket(new Socket(this.controllerHost, this.controllerPort));
@@ -100,51 +92,6 @@ public class ChunkServer implements Node {
             controllerSenderSocket.sendData(registerRequest.getBytes());
         } catch (IOException e) {
             System.out.println("Failed to send the register request: " + e.getMessage());
-        }
-    }
-
-    public void initiateHeartBeatScheduler() {
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-        executor.scheduleAtFixedRate(this::sendHeartBeat, 0, 15, TimeUnit.SECONDS);
-    }
-    
-    public void sendHeartBeat() {
-        // Get the current time in seconds since the epoch
-        long currentTime = System.currentTimeMillis() / 1000;
-    
-        // Check if the current time is at a 2-minute interval
-        if (currentTime % 120 == 0) {
-            majorBeat();
-        } else {
-            minorBeat();
-        }
-    }
-    
-
-    public void minorBeat() {
-        // send a minor heartbeat to the successor
-        try{
-            MinorHeartBeat minorHeartBeat = new MinorHeartBeat(this.node, this.fileHandler.hasNewChunks(), 
-                                                            this.fileHandler.getNewChunks(), 
-                                                            this.fileHandler.corruptedFileFound(), 
-                                                            this.fileHandler.checkChecksums());
-            // send to controller node
-            controllerSenderSocket.sendData(minorHeartBeat.getBytes());
-        } catch (IOException e) {
-            System.out.println("Failed to send the minor heartbeat: " + e.getMessage());
-        }
-    }
-
-    public void majorBeat() {
-        // send a major heartbeat to the successor
-        try{
-            MajorHeartBeat majorHeartBeat = new MajorHeartBeat(this.node, this.fileHandler.corruptedFileFound(), 
-                                                            this.fileHandler.checkChecksums(), 
-                                                            this.fileHandler.getTotalSpace(), 
-                                                            this.fileHandler.getFileMap());
-            controllerSenderSocket.sendData(majorHeartBeat.getBytes());
-        } catch (IOException e) {
-            System.out.println("Failed to send the major heartbeat: " + e.getMessage());
         }
     }
 
@@ -177,35 +124,9 @@ public class ChunkServer implements Node {
         return node;
     }
 
-    public void deregisterNode(String controllerHost, int controllerPort) throws IOException {
-        try{
-            // create a new deregister request
-            DeregisterRequest deregisterRequest = new DeregisterRequest(IpAddress, portNumber);
-            // Send a deregister request to the controller
-            controllerSenderSocket.sendData(deregisterRequest.getBytes());
-        } catch (IOException e) {
-            System.out.println("Failed to send the deregister request: " + e.getMessage());
-        }            
-    }
-
 
     // ---------------------------- On Event Handlers and helpers --------------------------------------------------
 
-    public void deregisterHandler(DeregisterResponse deregisterResponse) {
-        System.out.println("Printing Deregister Response info: \n" + deregisterResponse.getInfo());
-        if (deregisterResponse.getSuccessStatus() == Protocol.SUCCESS) {
-            try {
-                // close the server thread
-                serverThread.shutdown();
-                // close the connection to the controller
-                controllerSenderSocket.closeSocket();
-                controllerSocket.close();
-                System.out.println("Deregistered successfully");
-            } catch (IOException e) {
-                System.out.println("Failed to close the Server or ControllerNode socket: " + e.getMessage());
-            }
-        }
-    }
 
     public synchronized void sendToNode(String node, Event message){
         // node is the hostname:port of the next node
@@ -247,69 +168,15 @@ public class ChunkServer implements Node {
 
         switch (event.getType()) {
 
-            case Protocol.DEREGISTER_REQUEST:
-                // casting the event to a DeregisterRequest
-                DeregisterRequest deregisterRequest = (DeregisterRequest) event;
-                System.out.println("Printing Deregister Request Info: \n" + deregisterRequest.getInfo());
-                break;
-
             case Protocol.REGISTER_RESPONSE:
                 // casting the event to a RegisterResponse
                 RegisterResponse registerResponse = (RegisterResponse) event;
                 handleRegistrationResponse(registerResponse);
                 break;
             
-            case Protocol.DEREGISTER_RESPONSE:
-                // casting the event to a DeregisterResponse
-                DeregisterResponse deregisterResponse = (DeregisterResponse) event;
-                deregisterHandler(deregisterResponse);
-                break;
-
-            case Protocol.UPLOAD:
-
-                // cast the event to a Upload
-                Upload upload = (Upload) event;
-                System.out.println("Printing Incoming File Upload Info: \n" + upload.getInfo());
-            
-                List<String> forwardToTheseChunks = upload.getForwardToTheseChunks();
-                
-                // check if this node is in the list of nodes to forward to
-                if (forwardToTheseChunks.contains(this.node)) {
-                    // remove this node from the list
-                    forwardToTheseChunks.remove(this.node);
-                }
-                    // store the file locally
-                fileHandler.uploadFile(upload);
-                
-                if (forwardToTheseChunks.size() == 0) {
-                    break;
-                }
-                for (String chunkID : forwardToTheseChunks) {
-                    // send the chunk to the responsible node
-                    System.out.println("Relaying chunk " + upload.getChunkFileName() +" to: " +  chunkID);
-
-                    sendToNode(chunkID, upload);
-                }                
-                break;
-
-                case Protocol.DOWNLOAD_REQUEST:
-                DownloadRequest downloadRequest = (DownloadRequest) event;
-                System.out.println("Printing Download Request Info: \n" + downloadRequest.getInfo());
-            
-                if (fileHandler.fileExists(downloadRequest.getFileName())) {
-                    System.out.println("File found. Sending the chunk files.");
-                    for (DownloadResponse downloadResponse : fileHandler.downloadFile(downloadRequest.getFileName())) {
-                        sendToNode(downloadRequest.getClient(), downloadResponse);
-                    }
-                } else {
-                    System.out.println("File not found. Please try again.");
-                }
-                break;
-
             default:
                 System.out.println("Unknown event type: " + event.getType());
         }
-
     }
 
     
@@ -334,10 +201,8 @@ public class ChunkServer implements Node {
             return;
         }
 
-        ChunkServer node = new ChunkServer(controllerHost, controllerPort);
+        Client node = new Client(controllerHost, controllerPort);
         node.bootUpNodeConnection();
-
-        node.initiateHeartBeatScheduler();
 
         // Start a new thread to read commands from the console
         new Thread(() -> {
@@ -352,7 +217,6 @@ public class ChunkServer implements Node {
                     case "exit":
                         try {
                             System.out.println("Deregistering from the controller...");
-                            node.deregisterNode(controllerHost, controllerPort);
                             node.sleep(5000);
                             System.out.println("Closing the scanner...");
                             scanner.close();
@@ -367,11 +231,34 @@ public class ChunkServer implements Node {
                         System.out.println("My Port Number: " + node.getPortNumber());
 
                         break;
-                    case "files":
-                        // Prints the list of files this peer node is responsible for. 
-                        // Each file should appear on a separate line with the following format:
-                        // <file-name> <hash-code>
-                        node.fileHandler.printFileList();
+                    case "upload":
+                        // Stores the specified file into the chord system. The file is not directly stored on the peer node where
+                        // the command is issued. Instead, the file is stored in the peer node with the smallest peerID that is
+                        // greater than the hash code of the file name (with extension and without path). The peer node where
+                        // the command is issued is responsible for reading the file and sending it to the correct peer node. Example
+                        // usage: upload work/projects/readme.txt
+                        if (words.length > 1) {
+                            String filePath = words[1];
+                            // TODO
+                        } else {
+                            System.out.println("Please specify a file path to upload.");
+                        }
+                        break;
+                   
+                    case "download":
+                        if (words.length > 1) {
+                            // Queries the chord system and downloads the file with the given name to the current working
+                            // directory. <file-name> should contain the extension, but not the original path where it was uploaded
+                            // from. If the file does not exist, an error message should be printed. If the file is downloaded, the peer
+                            // node should print the list of hops that was used to retrieve the file. The list should contain the starting
+                            // peer and the final peer, as well as all intermediate hops. Each peer node should be on a separate line
+                            // and it should be represented just by its peerID. The peer nodes should be ordered from starting node
+                            // to final node. Example usage: download readme.txt
+                            String fileName = words[1];
+                            // TODO
+                        } else {
+                            System.out.println("Please specify a file to download");
+                        }
                         break;
                     default:
                         System.out.println("Unknown command: " + command);

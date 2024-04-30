@@ -11,7 +11,7 @@ public class ChunkInfo {
     public String chunkID;
     public int port;
     public String ip;
-    public int availableSpace = 1000000;
+    public float availableSpace = 1000000;
     private Map<String, List<String>> filesToChunks = Collections.synchronizedMap(new HashMap<>());
 
     public ChunkInfo(String chunkID) {
@@ -44,14 +44,13 @@ public class ChunkInfo {
         return filesToChunks.containsValue(Collections.singletonList(chunkID));
     }
 
-    public int getAvailableSpace() {
+    public float getAvailableSpace() {
         return availableSpace;
     }
 
-    public void setAvailableSpace(int availableSpace) {
+    public void setAvailableSpace(float availableSpace) {
         this.availableSpace = availableSpace;
     }
-
     public String getChunkID() {
         return chunkID;
     }

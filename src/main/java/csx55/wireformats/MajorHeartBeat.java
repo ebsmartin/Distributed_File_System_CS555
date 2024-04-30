@@ -11,14 +11,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class MajorHeartBeat implements Event{
     private int messageType = Protocol.MAJOR_HEARTBEAT;
     private String chunkID;
     private boolean corruptFileFound = false;
     private List<String> corruptedChunks = new ArrayList<>();
-    private int availableSpace;
-    private Map<String, List<String>> filesToChunks;
+    private float availableSpace;
+    private Map<String, List<Path>> fileMap;
     
     
     public MajorHeartBeat(byte[] message) throws IOException {
@@ -30,18 +33,17 @@ public class MajorHeartBeat implements Event{
     }
     
     public MajorHeartBeat(String chunkID, boolean corruptFileFound, 
-                    List<String> corruptedFiles, int availableSpace,
-                    Map<String, List<String>> filesToChunks) throws IOException {
+                    List<String> corruptedFiles, float availableSpace,
+                    ConcurrentHashMap<String, List<Path>> fileMap) throws IOException {
         this.chunkID = chunkID;
         this.corruptFileFound = corruptFileFound;
         this.corruptedChunks = corruptedFiles == null ? new ArrayList<>() : corruptedFiles;
         this.availableSpace = availableSpace;
-            this.filesToChunks = filesToChunks == null ? new HashMap<>() : filesToChunks;
-
+        this.fileMap = new ConcurrentHashMap<>(fileMap); // copy the ConcurrentHashMap
     }
 
     public String getInfo() {
-        return "MAJOR_HEARTBEAT\nChunk ID (String): " + chunkID + "\nCorrupt File Found (boolean): " + corruptFileFound + "\nCorrupted Chunks (List<String>): " + corruptedChunks + "\nAvailable Space (int): " + availableSpace + "\nFiles to Chunks (Map<String, List<String>>): " + filesToChunks + "\n";
+        return "MAJOR_HEARTBEAT\nChunk ID (String): " + chunkID + "\nCorrupt File Found (boolean): " + corruptFileFound + "\nCorrupted Chunks (List<String>): " + corruptedChunks + "\nAvailable Space (int): " + availableSpace + "\nFiles to Chunks (Map<String, List<String>>): " + fileMap + "\n";
     }
 
     public String getChunkID() {
@@ -52,7 +54,7 @@ public class MajorHeartBeat implements Event{
         return Protocol.MAJOR_HEARTBEAT;
     }
 
-    public int getAvailableSpace() {
+    public float getAvailableSpace() {
         return availableSpace;
     }
 
@@ -64,8 +66,8 @@ public class MajorHeartBeat implements Event{
         return corruptedChunks;
     }
 
-    public Map<String, List<String>> getFilesToChunks() {
-        return filesToChunks;
+    public Map<String, List<Path>> getFileMap() {
+        return fileMap;
     }
 
 
@@ -92,16 +94,16 @@ public class MajorHeartBeat implements Event{
             dout.writeInt(chunkBytes.length);
             dout.write(chunkBytes);
         }
-        dout.writeInt(availableSpace);
-        dout.writeInt(filesToChunks.size());
-        for (Map.Entry<String, List<String>> entry : filesToChunks.entrySet()) {
+        dout.writeFloat(availableSpace);
+        dout.writeInt(fileMap.size());
+        for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
             byte[] fileNameBytes = entry.getKey().getBytes();
             dout.writeInt(fileNameBytes.length);
             dout.write(fileNameBytes);
-            List<String> chunkIDs = entry.getValue();
+            List<Path> chunkIDs = entry.getValue();
             dout.writeInt(chunkIDs.size());
-            for (String chunkID : chunkIDs) {
-                byte[] chunkListIDBytes = chunkID.getBytes(); // renamed variable
+            for (Path chunkID : chunkIDs) {
+                byte[] chunkListIDBytes = chunkID.toString().getBytes(); // convert Path to String
                 dout.writeInt(chunkListIDBytes.length);
                 dout.write(chunkListIDBytes);
             }
@@ -140,23 +142,23 @@ public class MajorHeartBeat implements Event{
             din.readFully(chunkBytes);
             corruptedChunks.add(new String(chunkBytes));
         }
-        availableSpace = din.readInt();
+        availableSpace = din.readFloat();
         int numFiles = din.readInt();
-        filesToChunks = new HashMap<>();
+        fileMap = new HashMap<>();
         for (int i = 0; i < numFiles; i++) {
             int fileNameLength = din.readInt();
             byte[] fileNameBytes = new byte[fileNameLength];
             din.readFully(fileNameBytes);
             String fileName = new String(fileNameBytes);
             int numChunks = din.readInt();
-            List<String> chunkIDs = new ArrayList<>();
+            List<Path> chunkIDs = new ArrayList<>();
             for (int j = 0; j < numChunks; j++) {
                 int newChunkIDLength = din.readInt();
                 byte[] newchunkIDBytes = new byte[newChunkIDLength];
                 din.readFully(newchunkIDBytes);
-                chunkIDs.add(new String(newchunkIDBytes));
+                chunkIDs.add(Paths.get(new String(newchunkIDBytes))); // convert String to Path
             }
-            filesToChunks.put(fileName, chunkIDs);
+            fileMap.put(fileName, chunkIDs);
         }
         // close the byte array input stream and the data input stream
         baInputStream.close();
