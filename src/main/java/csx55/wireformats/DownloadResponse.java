@@ -7,86 +7,115 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.DataInputStream;
-import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.Files;
 
 public class DownloadResponse implements Event {
 
-
     private int messageType = Protocol.DOWNLOAD_RESPONSE;
-    private File file;
-    private String fileName;
-    
+    private Path filePath;
+    private byte status;
+    private Map<String, Set<Integer>> chunkServersToContact;
+
     public DownloadResponse(byte[] message) throws IOException {
         setBytes(message);
     }
 
-    public DownloadResponse(File file) {
-        this.file = file;
-        this.fileName = file.getName();
+    public DownloadResponse(byte status, Path filePath, Map<String, Set<Integer>> chunkServersToContact) {
+        this.status = status;
+        this.filePath = filePath;
+        this.chunkServersToContact = chunkServersToContact;
     }
 
     public int getType() {
         return Protocol.DOWNLOAD_RESPONSE;
     }
 
-    public File getFile() {
-        return file;
+    public Path getFilePath() {
+        return filePath;
     }
 
-    public String getFileName() {
-        return fileName;
+    public byte getStatus() {
+        return status;
+    }
+
+    public Map<String, Set<Integer>> getChunkServersToContact() {
+        return chunkServersToContact;
     }
 
     public String getInfo() {
-        return "Download Delivery for file: " + fileName + "\n";
+        return "DOWNLOAD_RESPONSE\nFile Path (Path): " + filePath + "\nStatus (byte): " + status + "\nChunk Servers to Contact (Map<String, Set<Integer>>): " + chunkServersToContact + "\n";
     }
-    
+
     public byte[] getBytes() throws IOException {
-    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-    DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(byteArrayOutputStream));
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(byteArrayOutputStream));
 
-    dout.writeInt(messageType);
+        dout.writeInt(messageType);
 
-    // Write the file name
-    dout.writeInt(fileName.length());
-    dout.writeBytes(fileName);
+        // Write the file path
+        String filePathString = filePath.toString();
+        dout.writeInt(filePathString.length());
+        dout.writeBytes(filePathString);
 
-    // Write the file content
-    byte[] fileContent = Files.readAllBytes(file.toPath());
-    dout.writeInt(fileContent.length);
-    dout.write(fileContent);
+        // Write the status
+        dout.writeByte(status);
 
-    dout.flush();
-    byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
-    byteArrayOutputStream.close();
-    dout.close();
+        // Write the chunkServersToContact map
+        dout.writeInt(chunkServersToContact.size());
+        for (Map.Entry<String, Set<Integer>> entry : chunkServersToContact.entrySet()) {
+            dout.writeInt(entry.getKey().length());
+            dout.writeBytes(entry.getKey());
+            dout.writeInt(entry.getValue().size());
+            for (Integer chunk : entry.getValue()) {
+                dout.writeInt(chunk);
+            }
+        }
 
-    return marshalledBytes;
-}
+        dout.flush();
+        byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
+        byteArrayOutputStream.close();
+        dout.close();
 
-public void setBytes(byte[] marshalledBytes) throws IOException {
-    ByteArrayInputStream baInputStream = new ByteArrayInputStream(marshalledBytes);
-    DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));
+        return marshalledBytes;
+    }
 
-    messageType = din.readInt();
+    public void setBytes(byte[] marshalledBytes) throws IOException {
+        ByteArrayInputStream baInputStream = new ByteArrayInputStream(marshalledBytes);
+        DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));
 
-    // Read the file name
-    int fileNameLength = din.readInt();
-    byte[] fileNameBytes = new byte[fileNameLength];
-    din.readFully(fileNameBytes);
-    fileName = new String(fileNameBytes);
+        messageType = din.readInt();
 
-    // Read the file content
-    int fileContentLength = din.readInt();
-    byte[] fileContent = new byte[fileContentLength];
-    din.readFully(fileContent);
-    Files.write(Paths.get(fileName), fileContent);
-    file = new File(fileName);
+        // Read the file path
+        int filePathLength = din.readInt();
+        byte[] filePathBytes = new byte[filePathLength];
+        din.readFully(filePathBytes);
+        filePath = Paths.get(new String(filePathBytes));
 
-    baInputStream.close();
-    din.close();
-}
-    
+        // Read the status
+        status = din.readByte();
+
+        // Read the chunkServersToContact map
+        int mapSize = din.readInt();
+        chunkServersToContact = new HashMap<>();
+        for (int i = 0; i < mapSize; i++) {
+            int keyLength = din.readInt();
+            byte[] keyBytes = new byte[keyLength];
+            din.readFully(keyBytes);
+            String key = new String(keyBytes);
+            int setSize = din.readInt();
+            Set<Integer> set = new HashSet<>();
+            for (int j = 0; j < setSize; j++) {
+                set.add(din.readInt());
+            }
+            chunkServersToContact.put(key, set);
+        }
+
+        baInputStream.close();
+        din.close();
+    }
 }

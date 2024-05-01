@@ -4,59 +4,62 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class DownloadRequest implements Event{
+public class DownloadChunkRequest implements Event {
 
-    private int messageType = Protocol.DOWNLOAD_REQUEST;
+    private int messageType = Protocol.DOWNLOAD_CHUNK_REQUEST;
     private Path filePath;
-    private String client;
+    private int chunk;
+    private String clientNode;
 
-    public DownloadRequest(byte[] message) throws IOException {
+    public DownloadChunkRequest(byte[] message) throws IOException {
         setBytes(message);
     }
 
-    public DownloadRequest(Path filePath, String client) {
+    public DownloadChunkRequest(String clientNode, Path filePath, int chunk) {
         this.filePath = filePath;
-        this.client = client;
+        this.chunk = chunk;
+        this.clientNode = clientNode;
     }
 
     public int getType() {
-        return Protocol.DOWNLOAD_REQUEST;
+        return Protocol.DOWNLOAD_CHUNK_REQUEST;
     }
 
     public Path getFilePath() {
         return filePath;
     }
 
-    public String getFileName() {
-        return filePath.getFileName().toString();
+    public int getChunk() {
+        return chunk;
     }
 
     public String getClient() {
-        return client;
+        return clientNode;
     }
-
 
     public String getInfo() {
-        return "Download Request for file: " + filePath + " from client: " + client;
+        return "DOWNLOAD_CHUNK_REQUEST\nFile Path (Path): " + filePath + "\nChunk (int): " + chunk + "\nClient Node (String): " + clientNode + "\n";
     }
-    
+
+
     public byte[] getBytes() throws IOException {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(byteArrayOutputStream));
-    
+
         dout.writeInt(messageType);
         byte[] filePathBytes = filePath.toString().getBytes();
         dout.writeInt(filePathBytes.length);
         dout.write(filePathBytes);
-        byte[] clientBytes = client.getBytes();
-        dout.writeInt(clientBytes.length);
-        dout.write(clientBytes);
-        
+        dout.writeInt(chunk);
+        byte[] clientNodeBytes = clientNode.getBytes();
+        dout.writeInt(clientNodeBytes.length);
+        dout.write(clientNodeBytes);
+
         dout.flush();
         byte[] marshalledBytes = byteArrayOutputStream.toByteArray();
         byteArrayOutputStream.close();
         dout.close();
-    
+
         return marshalledBytes;
     }
 
@@ -69,11 +72,12 @@ public class DownloadRequest implements Event{
         byte[] filePathBytes = new byte[filePathLength];
         din.readFully(filePathBytes);
         filePath = Paths.get(new String(filePathBytes));
-        int clientLength = din.readInt();
-        byte[] clientBytes = new byte[clientLength];
-        din.readFully(clientBytes);
-        client = new String(clientBytes);
-        
+        chunk = din.readInt();
+        int clientNodeLength = din.readInt();
+        byte[] clientNodeBytes = new byte[clientNodeLength];
+        din.readFully(clientNodeBytes);
+        clientNode = new String(clientNodeBytes);
+
         baInputStream.close();
         din.close();
     }

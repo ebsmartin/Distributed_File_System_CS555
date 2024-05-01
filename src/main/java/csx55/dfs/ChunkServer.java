@@ -293,18 +293,11 @@ public class ChunkServer implements Node {
                 }                
                 break;
 
-            case Protocol.DOWNLOAD_REQUEST:
-                DownloadRequest downloadRequest = (DownloadRequest) event;
-                System.out.println("Printing Download Request Info: \n" + downloadRequest.getInfo());
-            
-                if (fileHandler.fileExists(downloadRequest.getFileName())) {
-                    System.out.println("File found. Sending the chunk files.");
-                    for (DownloadResponse downloadResponse : fileHandler.downloadFile(downloadRequest.getFileName())) {
-                        sendToNode(downloadRequest.getClient(), downloadResponse);
-                    }
-                } else {
-                    System.out.println("File not found. Please try again.");
-                }
+            case Protocol.DOWNLOAD_CHUNK_REQUEST:
+                DownloadChunkRequest downloadChunkRequest = (DownloadChunkRequest) event;
+                System.out.println("Printing Download Chunk Request Info: \n" + downloadChunkRequest.getInfo());
+                DownloadChunkResponse downloadChunkResponse = fileHandler.downloadChunk(downloadChunkRequest.getFilePath(), downloadChunkRequest.getChunk());
+                sendToNode(downloadChunkRequest.getClient(), downloadChunkResponse);
                 break;
 
             default:

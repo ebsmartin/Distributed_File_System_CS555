@@ -15,4 +15,6 @@ public class Protocol {
     public static final int MAJOR_HEARTBEAT = 11;
     public static final int UPLOAD_REQUEST = 12;
     public static final int UPLOAD_RESPONSE = 13;
+    public static final int DOWNLOAD_CHUNK_REQUEST = 14;
+    public static final int DOWNLOAD_CHUNK_RESPONSE = 15;
 }

@@ -9,7 +9,9 @@ import java.io.DataOutputStream;
 import java.io.DataInputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.nio.file.Path;
@@ -21,7 +23,7 @@ public class MajorHeartBeat implements Event{
     private boolean corruptFileFound = false;
     private List<String> corruptedChunks = new ArrayList<>();
     private float availableSpace;
-    private Map<String, List<Path>> fileMap;
+    private Map<String, Set<Path>> fileMap;
     
     
     public MajorHeartBeat(byte[] message) throws IOException {
@@ -34,7 +36,7 @@ public class MajorHeartBeat implements Event{
     
     public MajorHeartBeat(String chunkID, boolean corruptFileFound, 
                     List<String> corruptedFiles, float availableSpace,
-                    ConcurrentHashMap<String, List<Path>> fileMap) throws IOException {
+                    ConcurrentHashMap<String, Set<Path>> fileMap) throws IOException {
         this.chunkID = chunkID;
         this.corruptFileFound = corruptFileFound;
         this.corruptedChunks = corruptedFiles == null ? new ArrayList<>() : corruptedFiles;
@@ -66,7 +68,7 @@ public class MajorHeartBeat implements Event{
         return corruptedChunks;
     }
 
-    public Map<String, List<Path>> getFileMap() {
+    public Map<String, Set<Path>> getFileMap() {
         return fileMap;
     }
 
@@ -91,11 +93,11 @@ public class MajorHeartBeat implements Event{
         dout.writeFloat(availableSpace);
         dout.writeInt(fileMap != null ? fileMap.size() : 0);
         if (fileMap != null) {
-            for (Map.Entry<String, List<Path>> entry : fileMap.entrySet()) {
+            for (Map.Entry<String, Set<Path>> entry : fileMap.entrySet()) {
                 byte[] fileNameBytes = entry.getKey().getBytes();
                 dout.writeInt(fileNameBytes.length);
                 dout.write(fileNameBytes);
-                List<Path> chunkIDs = entry.getValue();
+                Set<Path> chunkIDs = entry.getValue();
                 dout.writeInt(chunkIDs != null ? chunkIDs.size() : 0);
                 if (chunkIDs != null) {
                     for (Path chunkID : chunkIDs) {
@@ -117,7 +119,7 @@ public class MajorHeartBeat implements Event{
     public void setBytes(byte[] marshalledBytes) throws IOException {
         ByteArrayInputStream baInputStream = new ByteArrayInputStream(marshalledBytes);
         DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));
-    
+
         messageType = din.readInt();
         int chunkIDLength = din.readInt();
         byte[] chunkIDBytes = new byte[chunkIDLength];
@@ -141,7 +143,7 @@ public class MajorHeartBeat implements Event{
             din.readFully(fileNameBytes);
             String fileName = new String(fileNameBytes);
             int numChunks = din.readInt();
-            List<Path> chunkIDs = new ArrayList<>();
+            Set<Path> chunkIDs = new HashSet<>();
             for (int j = 0; j < numChunks; j++) {
                 int newChunkIDLength = din.readInt();
                 byte[] newchunkIDBytes = new byte[newChunkIDLength];
@@ -153,5 +155,4 @@ public class MajorHeartBeat implements Event{
         baInputStream.close();
         din.close();
     }
-
 }

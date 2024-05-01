@@ -5,34 +5,33 @@ import java.io.IOException;
 
 
 import java.util.Scanner;
-
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import javax.tools.FileObject;
+import java.util.Set;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-
+import java.util.Map;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import csx55.transport.TCPRecieverThread;
 import csx55.transport.TCPSender;
 import csx55.transport.TCPServerThread;
 import csx55.wireformats.*;
-import csx55.storage.*;
+
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 public class Client implements Node {
@@ -46,9 +45,15 @@ public class Client implements Node {
     private String controllerHost; // controller host
     private int controllerPort; // controller port
 
-    String filePathToUpload = ""; // file path to upload
-    String fileNameToDownload = ""; // file name to download
+    AtomicReference<String> filePathToUpload = new AtomicReference<>(""); // file path to upload
+    AtomicReference<String> fileNameToDownload = new AtomicReference<>(""); // file name to download
+    AtomicInteger numberOfChunksToDownload = new AtomicInteger(0); // number of chunks to download
 
+    CountDownLatch latch; // Declare the latch for downloading chunks
+
+    // thread safe data structure to store file chunks before combining
+    private ConcurrentHashMap<String, byte[]> fileChunks = new ConcurrentHashMap<>();
+    
     // Peer Node Information
     private String IpAddress; // ip Address
     private int portNumber = 0;  // port number
@@ -174,13 +179,13 @@ public class Client implements Node {
     }
 
     public void handleUploadResponse(UploadResponse uploadResponse) {
-        System.out.println("Upload Response Info: \n" + uploadResponse.getInfo());
+        System.out.println("Upload Response Info From Controller: \n" + uploadResponse.getInfo());
         // send the file to the returned node
         if (uploadResponse.getSuccessStatus() == Protocol.SUCCESS) {
             // get the chunk servers
             List<String> chunkServers = uploadResponse.getChunkServers();
             // get the file path
-            String filePath = this.filePathToUpload;
+            String filePath = filePathToUpload.get();
             // get the file name
             String fileName = Paths.get(filePath).getFileName().toString();
             // send the file to the chunk servers
@@ -216,9 +221,45 @@ public class Client implements Node {
     }
 
     public void handleDownloadResponse(DownloadResponse downloadResponse) {
-        System.out.println("Download Response Info: \n" + downloadResponse.getInfo());
+        System.out.println("Download Response Info From Controller: \n" + downloadResponse.getInfo());
+        if (downloadResponse.getStatus() == Protocol.SUCCESS){
+            Map<String, Set<Integer>> chunkServersToContact = downloadResponse.getChunkServersToContact();
+            int highestChunkNumber = Integer.MIN_VALUE;
+            for (Map.Entry<String, Set<Integer>> entry : chunkServersToContact.entrySet()) {
+                Set<Integer> chunks = entry.getValue();
+                int maxChunkNumber = Collections.max(chunks);
+                if (maxChunkNumber > highestChunkNumber) {
+                    highestChunkNumber = maxChunkNumber;
+                }
+            }
+            System.out.println("Highest chunk number: " + highestChunkNumber);
+            numberOfChunksToDownload.set(highestChunkNumber);
+            // Initialize the latch with the highest chunk number
+            System.out.println("Initializing latch with count: " + highestChunkNumber);
+            latch = new CountDownLatch(highestChunkNumber);
+    
+            for (Map.Entry<String, Set<Integer>> entry : chunkServersToContact.entrySet()) {
+                String chunkServer = entry.getKey();
+                Set<Integer> chunks = entry.getValue();
+                for (Integer chunk : chunks) {
+                    try {
+                        // Create a DownloadChunkRequest for each chunk
+                        DownloadChunkRequest request = new DownloadChunkRequest(this.node, downloadResponse.getFilePath(), chunk);
+                        // Send the DownloadChunkRequest to the chunk server
+                        Socket socket = new Socket(chunkServer.split(":")[0], Integer.parseInt(chunkServer.split(":")[1]));
+                        TCPSender sender = new TCPSender(socket);
+                        sender.sendData(request.getBytes());
+                    } catch (IOException e) {
+                        System.out.println("Failed to send download chunk request: " + e.getMessage());
+                    }
+                }
+            }
+        }else{
+            System.out.println("Failed to download the file: " + downloadResponse.getFilePath());
+        
+        }
     }
-
+    
     public void createUploadRequest(String clientNode, float fileSize, String fileName) {
         try {
             UploadRequest uploadRequest = new UploadRequest(clientNode, fileSize, fileName);
@@ -226,6 +267,64 @@ public class Client implements Node {
             controllerSenderSocket.sendData(uploadRequest.getBytes());
         } catch (IOException e) {
             System.out.println("Failed to create upload request: " + e.getMessage());
+        }
+    }
+
+    public void handleDownloadChunkResponse(DownloadChunkResponse downloadChunkResponse) {
+        System.out.println("Download Chunk Response Info: \n" + downloadChunkResponse.getInfo());
+        if (downloadChunkResponse.getSuccess()) {
+            // Get the chunk and its file path
+            Path filePath = downloadChunkResponse.getFilePath();
+            byte[] chunkContents = downloadChunkResponse.getChunkContents();
+            String chunkFilePath = filePath.toString();
+    
+            // Store the chunk in the ConcurrentHashMap
+            fileChunks.put(chunkFilePath, chunkContents);
+    
+            // Decrement the latch count
+            latch.countDown();
+            System.out.println("Latch count: " + latch.getCount());
+            if (latch.getCount() == 0) {
+                System.out.println("All chunks received");
+                System.out.println("List of chunks received: " + fileChunks.keySet());
+                combineChunks();
+            }
+        }
+    }
+    
+    public void combineChunks() {
+        try {
+            System.out.println("Combining chunks for final download...");
+            // Sort the keys of fileChunks in ascending order of chunk number
+            List<String> sortedKeys = new ArrayList<>(fileChunks.keySet());
+            Pattern pattern = Pattern.compile("_chunk(\\d+)");
+            sortedKeys.sort(Comparator.comparingInt(key -> {
+                Matcher matcher = pattern.matcher(key);
+                if (matcher.find()) {
+                    return Integer.parseInt(matcher.group(1));
+                } else {
+                    return Integer.MAX_VALUE; // or some default value
+                }
+            }));
+                
+            // Create a new byte array to store the combined chunks
+            byte[] combinedChunks = new byte[0];
+    
+            // For each key in the sorted list, append its corresponding byte array to combinedChunks
+            for (String key : sortedKeys) {
+                byte[] chunk = fileChunks.get(key);
+                byte[] temp = new byte[combinedChunks.length + chunk.length];
+                System.arraycopy(combinedChunks, 0, temp, 0, combinedChunks.length);
+                System.arraycopy(chunk, 0, temp, combinedChunks.length, chunk.length);
+                combinedChunks = temp;
+            }
+    
+            // Write the combined chunks to the final file
+            Path finalDownloadPath = Paths.get(fileNameToDownload.get());
+            Files.write(finalDownloadPath, combinedChunks);
+            System.out.println("File downloaded successfully: " + finalDownloadPath);
+        } catch (IOException e) {
+            System.out.println("Failed to combine chunks: " + e.getMessage());
         }
     }
 
@@ -252,8 +351,16 @@ public class Client implements Node {
             case Protocol.DOWNLOAD_RESPONSE:
                 // casting the event to a DownloadResponse
                 DownloadResponse downloadResponse = (DownloadResponse) event;
-                // handleDownloadResponse(downloadResponse);
+                handleDownloadResponse(downloadResponse);
                 break;
+
+            case Protocol.DOWNLOAD_CHUNK_RESPONSE:
+                // casting the event to a DownloadChunkResponse
+                DownloadChunkResponse downloadChunkResponse = (DownloadChunkResponse) event;
+                System.out.println("Download Chunk Response Info: \n" + downloadChunkResponse.getInfo());
+                handleDownloadChunkResponse(downloadChunkResponse);
+                break;
+
             default:
                 System.out.println("Unknown event type: " + event.getType());
         }
@@ -319,7 +426,7 @@ public class Client implements Node {
                                 Path path = Paths.get(filePath);
                                 byte[] fileBytes = Files.readAllBytes(path);
 
-                                node.filePathToUpload = filePath;
+                                node.filePathToUpload.set(filePath);
 
                                 // Calculate the file size in MB
                                 float fileSize = fileBytes.length / (1024.0f * 1024.0f);
@@ -345,8 +452,15 @@ public class Client implements Node {
                             // peer and the final peer, as well as all intermediate hops. Each peer node should be on a separate line
                             // and it should be represented just by its peerID. The peer nodes should be ordered from starting node
                             // to final node. Example usage: download readme.txt
-                            String fileName = words[1];
-                            // TODO
+                            String filePath = words[1];
+                            node.fileNameToDownload.set(filePath);
+                            Path path = Paths.get(filePath);
+                            try {
+                                DownloadRequest downloadRequest = new DownloadRequest(path, node.getNode());
+                                node.controllerSenderSocket.sendData(downloadRequest.getBytes());
+                            } catch (IOException e) {
+                                System.out.println("Failed to create download request: " + e.getMessage());
+                            }
                         } else {
                             System.out.println("Please specify a file to download");
                         }

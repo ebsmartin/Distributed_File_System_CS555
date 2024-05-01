@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Scanner;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,9 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
+import java.util.Set;
+
 
 import csx55.transport.TCPSender;
 import csx55.transport.TCPServerThread;
@@ -97,7 +101,8 @@ public class Controller implements Node{
         // Add the node to the list of peer nodes
         try {
             if (isClient) {
-                clientSockets.put(key, new TCPSender(socket));
+                TCPSender sender = new TCPSender(socket);
+                clientSockets.put(key, sender);
                 System.out.println("\nAdded client: " + key);
             } else {
                 chunkServerInfo.put(key, new ChunkInfo(key));
@@ -178,10 +183,87 @@ public class Controller implements Node{
     }
 
     // method to check if no heartbeat is received from a node
-    public void checkHeartbeat() {
-        // check if the last heartbeat received from a node is more than 5 seconds
-        // if so, remove the node from the list of peer nodes
-        // and send a message to all other nodes to remove the node from their list of peer nodes
+    public void checkHeartbeat(MinorHeartBeat minorHeartbeat) {
+
+        if (chunkServerInfo.isEmpty()) {
+            return;
+        }
+        String chunkID = minorHeartbeat.getChunkID();
+        ChunkInfo chunkInfo = chunkServerInfo.get(chunkID);
+        if (chunkInfo == null) {
+            return;
+        }
+        if (!chunkInfo.isStillAlive("Minor")) {
+            System.out.println("Node " + chunkID + " has not sent a heartbeat");
+            chunkServerInfo.remove(chunkID);
+            chunkServerSockets.remove(chunkID);
+            System.out.println("Removed node from the list of chunk server nodes: " + chunkID);
+        }
+        if (minorHeartbeat.getCorruptFileFound()) {
+            System.out.println("Corrupt file found on node: " + chunkID);
+            List<String> corruptedChunks = minorHeartbeat.getCorruptedChunks();
+            for (String chunk : corruptedChunks) {
+                System.out.println("Corrupted chunk: " + chunk);
+            }
+            // contact other node with the same file to resend the chunks
+            System.out.println("Contacting other nodes with the same file to resend the chunks");
+        }
+        if (minorHeartbeat.wereChunksAdded()) {
+            System.out.println("New chunks added to node: " + chunkID);
+            List<String> addedChunks = minorHeartbeat.getAddedChunks();
+            for (String chunk : addedChunks) {
+                System.out.println("Added chunk: " + chunk);
+                String fileName = chunk.split("_")[0];
+                chunkInfo.addFile(fileName, chunk.split("_")[1]);
+            }
+        }
+
+    }
+
+    public void checkHeartbeat(MajorHeartBeat majorHeartbeat) {
+
+        System.out.println("Checking major heartbeat");
+        if (chunkServerInfo.isEmpty()) {
+            return;
+        }
+        String chunkID = majorHeartbeat.getChunkID();
+        ChunkInfo chunkInfo = chunkServerInfo.get(chunkID);
+        
+        if (chunkInfo == null) {
+            return;
+        }
+        if (!chunkInfo.isStillAlive("Major")) {
+            System.out.println("Node " + chunkInfo.getChunkID() + " has not sent a heartbeat");
+            chunkServerInfo.remove(chunkInfo.getChunkID());
+            chunkServerSockets.remove(chunkInfo.getChunkID());
+            System.out.println("Removed node from the list of chunk server nodes: " + chunkInfo.getChunkID());
+        }
+        if (majorHeartbeat.isCorruptFileFound()) {
+            System.out.println("Corrupt file found on node: " + majorHeartbeat.getChunkID());
+            List<String> corruptedChunks = majorHeartbeat.getCorruptedChunks();
+            for (String chunk : corruptedChunks) {
+                System.out.println("Corrupted chunk: " + chunk);
+            }
+            // contact other node with the same file to resend the chunks
+            System.out.println("Contacting other nodes with the same file to resend the chunks");
+        }
+        if (chunkInfo.getAvailableSpace() != majorHeartbeat.getAvailableSpace()) {
+            System.out.println("Available space has changed on node: " + majorHeartbeat.getChunkID());
+            chunkInfo.setAvailableSpace(majorHeartbeat.getAvailableSpace());
+            System.out.println("New available space: " + majorHeartbeat.getAvailableSpace());
+        }
+        for (Map.Entry<String, Set<Path>> entry : majorHeartbeat.getFileMap().entrySet()) {
+            String fileName = entry.getKey();
+            Set<Path> chunks = entry.getValue();
+            if (!chunkInfo.hasFile(fileName)) {
+                System.out.println("New file found on node: " + majorHeartbeat.getChunkID());
+                System.out.println("File: " + fileName);
+                for (Path chunk : chunks) {
+                    System.out.println("Chunk: " + chunk);
+                    chunkInfo.addFile(fileName, chunk.getFileName().toString().split("_")[1]);
+                }
+            }
+        }
     }
 
     public List<String> getChunkServers(float fileSize) {
@@ -216,6 +298,7 @@ public class Controller implements Node{
         float fileSize = uploadRequest.getFileSize();
         // get the client node
         String clientNode = uploadRequest.getClientNode();
+        System.out.println("DEBUG: Client Node Upload Request: " + clientNode);
         // get the chunk server to store the file
         List<String> chunkServer = getChunkServers(fileSize);
         try {
@@ -230,6 +313,58 @@ public class Controller implements Node{
         UploadResponse response = new UploadResponse(status, chunkServers);
         sendMessageToNode(sender, response.getBytes());
         System.out.println("Sending Upload Response: \n" + response.getInfo());
+    }
+
+    public void handleDownloadRequest(DownloadRequest downloadRequest) {
+        String fileName = downloadRequest.getFileName();
+        Path filePath = downloadRequest.getFilePath();
+        String client = downloadRequest.getClient();
+        System.out.println("DEBUG: Client Node Download Request: " + client);
+        Map<String, Set<Integer>> chunkServersToContact = new HashMap<>();
+        Set<Integer> addedChunks = new HashSet<>(); // to keep track of added chunks
+        for (Map.Entry<String, ChunkInfo> entry : chunkServerInfo.entrySet()) {
+            ChunkInfo chunkInfo = entry.getValue();  // get the chunkInfo object
+            if (chunkInfo.hasFile(fileName)) { // check if the chunk server has the file
+                System.out.println("Chunk server " + entry.getKey() + " has the file: " + fileName);
+                // check if the chunk server has the currentChunk chunk
+                for (String chunkFile : chunkInfo.getChunksForFile(fileName)) {
+                    String[] parts = chunkFile.split("chunk");
+                    if (parts.length > 1) {
+                        int currentChunk = Integer.parseInt(parts[1]);
+                        if (!addedChunks.contains(currentChunk)) {
+                            Set<Integer> chunks = chunkServersToContact.getOrDefault(entry.getKey(), new HashSet<>());
+                            chunks.add(currentChunk);
+                            chunkServersToContact.put(entry.getKey(), chunks);
+                            addedChunks.add(currentChunk); // add the chunk to addedChunks set
+                        }
+                    } else {
+                        System.out.println("Chunk file does not contain chunk: " + chunkFile);
+                    }
+                }
+            }
+        }
+        if (chunkServersToContact.isEmpty()) {
+            System.out.println("File not found: " + fileName);
+            return;
+        }
+        try {
+            System.out.println("Sending download response to client: " + client);
+            sendDownloadResponse(clientSockets.get(client), Protocol.SUCCESS, filePath, chunkServersToContact);
+        } catch (IOException e) {
+            System.out.println("Failed to send download response: " + e.getMessage());
+            try{
+                sendDownloadResponse(clientSockets.get(client), Protocol.FAILURE, filePath, Collections.emptyMap());
+            } catch (IOException ex) {
+                System.out.println("Failed to send download response: " + ex.getMessage());
+            }
+        }
+    }
+
+    public void sendDownloadResponse(TCPSender sender, byte status, Path filePath, Map<String, Set<Integer>> chunkServersToContact) throws IOException {
+
+        DownloadResponse response = new DownloadResponse(status, filePath, chunkServersToContact);
+        sendMessageToNode(sender, response.getBytes());
+        System.out.println("Sending Download Response: \n" + response.getInfo());
     }
         
 
@@ -263,11 +398,13 @@ public class Controller implements Node{
                 // cast the event to a MinorHeartBeat
                 MinorHeartBeat minorHeartbeat = (MinorHeartBeat) event;
                 System.out.println("Printing Minor Heartbeat Info: \n" + minorHeartbeat.getInfo());
+                checkHeartbeat(minorHeartbeat);
                 break;
             case Protocol.MAJOR_HEARTBEAT:
                 // cast the event to a MinorHeartBeat
-                MinorHeartBeat majorHeartbeat = (MinorHeartBeat) event;
+                MajorHeartBeat majorHeartbeat = (MajorHeartBeat) event;
                 System.out.println("Printing Major Heartbeat Info: \n" + majorHeartbeat.getInfo());
+                checkHeartbeat(majorHeartbeat);
                 break;
 
             case Protocol.UPLOAD_REQUEST:
@@ -275,6 +412,13 @@ public class Controller implements Node{
                 UploadRequest uploadRequest = (UploadRequest) event;
                 System.out.println("Printing Upload Request Info: \n" + uploadRequest.getInfo());
                 handleUploadRequest(uploadRequest);
+                break;
+            
+            case Protocol.DOWNLOAD_REQUEST:
+                // cast the event to a DownloadRequest
+                DownloadRequest downloadRequest = (DownloadRequest) event;
+                System.out.println("Printing Download Request Info: \n" + downloadRequest.getInfo());
+                handleDownloadRequest(downloadRequest);
                 break;
             default:
                 System.out.println("Unknown event type: " + event.getType());

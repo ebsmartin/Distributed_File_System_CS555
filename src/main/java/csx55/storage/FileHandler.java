@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -28,7 +29,7 @@ public class FileHandler {
     private String fileDirectory;
     private float totalSpace = 1000000; // 1MB
     private int lastCheckedSize = 0; // used to check if new chunks have been added
-    private final List<Path> newChunks = new ArrayList<>();   // list of new chunks
+    private final Set<Path> newChunks = new LinkedHashSet<>();   // set of new chunks
     private boolean corruptedFileFound = false;
 
     // thread safe data structure to store file information
@@ -54,7 +55,7 @@ public class FileHandler {
 
     public List<String> getNewChunks() {
         List<String> chunkNames = newChunks.stream()
-            .map(path -> path.getFileName().toString().split("_")[1])
+            .map(path -> path.getFileName().toString())
             .collect(Collectors.toList());
         newChunks.clear();
         return chunkNames;
@@ -106,6 +107,7 @@ public class FileHandler {
 
                 Files.write(destinationPath, fileContents, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                 System.out.println("File stored locally at " + destinationPath);
+                System.out.println("File directory: " + fileDirectory);  // print the file directory
                 long fileSize = fileContents.length;
                 this.totalSpace -= fileSize;
                 Set<Path> chunkPaths = fileMap.computeIfAbsent(fileName, k -> new HashSet<>());
@@ -122,30 +124,43 @@ public class FileHandler {
         }
     }
 
-    public List<DownloadResponse> downloadFile(String fileName) {
-        System.out.println("Downloading file: " + fileName);
-        List<DownloadResponse> downloadResponses = new ArrayList<>();
-    
-        if (fileName == null) {
-            System.out.println("File name is null.");
-            return downloadResponses;
+    public DownloadChunkResponse downloadChunk(Path filePath, int chunkNum) {
+        if (filePath == null) {
+            System.out.println("File path is null.");
+            // create a download response with an empty chunk
+            return new DownloadChunkResponse(filePath, chunkNum, new byte[0], false);
         }
+
+        System.out.println("Downloading chunk: " + chunkNum + " from file: " + filePath);
+        String fileName = filePath.getFileName().toString();
     
         if (!fileMap.containsKey(fileName)) {
             System.out.println("File not found: " + fileName);
-            return downloadResponses;
+            return new DownloadChunkResponse(filePath, chunkNum, new byte[0], false);
         } else {
-            System.out.println("Chunks of file found: " +  fileMap.get(fileName));
+            System.out.println("File found, checking for chunk: " + chunkNum);
         }
     
         Set<Path> chunks = fileMap.get(fileName);
         for (Path chunk : chunks) {
-            File chunkFile = chunk.toFile();
-            DownloadResponse downloadResponse = new DownloadResponse(chunkFile);
-            downloadResponses.add(downloadResponse);
+            String chunkName = chunk.getFileName().toString();
+            String chunkNumberString = chunkName.substring(chunkName.lastIndexOf("chunk") + 5);
+            if (chunkNumberString.equals(String.valueOf(chunkNum))) {
+                System.out.println("Chunk found: " + chunk);
+                try {
+                    byte[] chunkContents = Files.readAllBytes(chunk);
+                    DownloadChunkResponse downloadResponse = new DownloadChunkResponse(chunk, chunkNum, chunkContents, true);
+                    return downloadResponse;
+                } catch (IOException e) {
+                    System.out.println("Error reading chunk: " + chunk);
+                    System.out.println("Exception: " + e.getMessage());
+                }
+            }
         }
-    
-        return downloadResponses;
+
+        // If no matching chunk was found, return a response with an empty chunk
+        System.out.println("Chunk not found: " + chunkNum);
+        return new DownloadChunkResponse(filePath, chunkNum, new byte[0], false);
     }
 
     public List<String> checkChecksums() {

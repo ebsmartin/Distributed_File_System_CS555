@@ -51,6 +51,10 @@ public class EventFactory {
                     return new UploadRequest(message);
                 case Protocol.UPLOAD_RESPONSE:
                     return new UploadResponse(message);
+                case Protocol.DOWNLOAD_CHUNK_REQUEST:
+                    return new DownloadChunkRequest(message);
+                case Protocol.DOWNLOAD_CHUNK_RESPONSE:
+                    return new DownloadChunkResponse(message);
                 default:
                     throw new IllegalArgumentException("Invalid event type: " + eventType);
             }

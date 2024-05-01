@@ -45,6 +45,22 @@ public class MinorHeartBeat implements Event{
         return chunkID;
     }
 
+    public boolean wereChunksAdded() {
+        return addedChunks;
+    }
+
+    public List<String> getAddedChunks() {
+        return newlyAddedChunks;
+    }
+
+    public boolean getCorruptFileFound() {
+        return corruptFileFound;
+    }
+
+    public List<String> getCorruptedChunks() {
+        return corruptedChunks;
+    }
+
     public int getType() {
         return Protocol.MINOR_HEARTBEAT;
     }
